@@ -3,7 +3,7 @@ package types
 import (
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	sdkerrors "github.com/cosmos/cosmos-sdk/types/errors"
-	"github.com/interbank-netting/cosmos/types"
+	commontypes "github.com/interbank-netting/cosmos/types"
 )
 
 const (
@@ -14,14 +14,14 @@ var _ sdk.Msg = &MsgVote{}
 
 // MsgVote defines a message for submitting a vote on a transfer event
 type MsgVote struct {
-	TxHash      string             `json:"tx_hash"`
-	Validator   string             `json:"validator"`
-	EventData   types.TransferEvent `json:"event_data"`
-	Signature   []byte             `json:"signature"`
+	TxHash      string                   `json:"tx_hash"`
+	Validator   string                   `json:"validator"`
+	EventData   commontypes.TransferEvent `json:"event_data"`
+	Signature   []byte                   `json:"signature"`
 }
 
 // NewMsgVote creates a new MsgVote instance
-func NewMsgVote(txHash, validator string, eventData types.TransferEvent, signature []byte) *MsgVote {
+func NewMsgVote(txHash, validator string, eventData commontypes.TransferEvent, signature []byte) *MsgVote {
 	return &MsgVote{
 		TxHash:    txHash,
 		Validator: validator,

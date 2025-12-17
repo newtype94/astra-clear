@@ -4,8 +4,8 @@ import (
 	"context"
 
 	sdk "github.com/cosmos/cosmos-sdk/types"
-	"github.com/interbank-netting/cosmos/types"
-	oracletypes "github.com/interbank-netting/cosmos/x/oracle/types"
+	commontypes "github.com/interbank-netting/cosmos/types"
+	"github.com/interbank-netting/cosmos/x/oracle/types"
 )
 
 type msgServer struct {
@@ -14,18 +14,18 @@ type msgServer struct {
 
 // NewMsgServerImpl returns an implementation of the MsgServer interface
 // for the provided Keeper.
-func NewMsgServerImpl(keeper Keeper) oracletypes.MsgServer {
+func NewMsgServerImpl(keeper Keeper) types.MsgServer {
 	return &msgServer{Keeper: keeper}
 }
 
-var _ oracletypes.MsgServer = msgServer{}
+var _ types.MsgServer = msgServer{}
 
 // Vote handles MsgVote messages
-func (k msgServer) Vote(goCtx context.Context, msg *oracletypes.MsgVote) (*oracletypes.MsgVoteResponse, error) {
+func (k msgServer) Vote(goCtx context.Context, msg *types.MsgVote) (*types.MsgVoteResponse, error) {
 	ctx := sdk.UnwrapSDKContext(goCtx)
 
 	// Create vote from message
-	vote := types.Vote{
+	vote := commontypes.Vote{
 		TxHash:    msg.TxHash,
 		Validator: msg.Validator,
 		EventData: msg.EventData,
@@ -44,7 +44,7 @@ func (k msgServer) Vote(goCtx context.Context, msg *oracletypes.MsgVote) (*oracl
 		return nil, err
 	}
 
-	return &oracletypes.MsgVoteResponse{
+	return &types.MsgVoteResponse{
 		Success:   true,
 		Consensus: consensus,
 	}, nil

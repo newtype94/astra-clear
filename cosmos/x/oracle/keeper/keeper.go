@@ -1,16 +1,20 @@
 package keeper
 
 import (
+	"crypto/ecdsa"
+	"crypto/sha256"
 	"fmt"
 	"time"
 
 	"github.com/cometbft/cometbft/libs/log"
 	"github.com/cosmos/cosmos-sdk/codec"
+	"github.com/cosmos/cosmos-sdk/crypto/keys/secp256k1"
 	storetypes "cosmossdk.io/store/types"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	paramtypes "github.com/cosmos/cosmos-sdk/x/params/types"
+	"github.com/ethereum/go-ethereum/crypto"
 
-	"github.com/interbank-netting/cosmos/types"
+	commontypes "github.com/interbank-netting/cosmos/types"
 	"github.com/interbank-netting/cosmos/x/oracle/types"
 )
 
@@ -56,7 +60,7 @@ func (k Keeper) Logger(ctx sdk.Context) log.Logger {
 }
 
 // SubmitVote submits a validator vote on a transfer event
-func (k Keeper) SubmitVote(ctx sdk.Context, vote types.Vote) error {
+func (k Keeper) SubmitVote(ctx sdk.Context, vote commontypes.Vote) error {
 	// Validate that the validator is active
 	if !k.IsActiveValidator(ctx, vote.Validator) {
 		return types.ErrValidatorNotActive
@@ -79,9 +83,9 @@ func (k Keeper) SubmitVote(ctx sdk.Context, vote types.Vote) error {
 	voteStatus, found := k.GetVoteStatus(ctx, vote.TxHash)
 	if !found {
 		// Create new vote status
-		voteStatus = types.VoteStatus{
+		voteStatus = commontypes.VoteStatus{
 			TxHash:      vote.TxHash,
-			Votes:       []types.Vote{vote},
+			Votes:       []commontypes.Vote{vote},
 			Confirmed:   false,
 			Threshold:   k.getConsensusThreshold(ctx),
 			VoteCount:   1,
@@ -116,16 +120,16 @@ func (k Keeper) SubmitVote(ctx sdk.Context, vote types.Vote) error {
 }
 
 // GetVoteStatus retrieves the vote status for a transaction hash
-func (k Keeper) GetVoteStatus(ctx sdk.Context, txHash string) (types.VoteStatus, bool) {
+func (k Keeper) GetVoteStatus(ctx sdk.Context, txHash string) (commontypes.VoteStatus, bool) {
 	store := ctx.KVStore(k.storeKey)
 	key := types.GetVoteStatusKey(txHash)
 	
 	bz := store.Get(key)
 	if bz == nil {
-		return types.VoteStatus{}, false
+		return commontypes.VoteStatus{}, false
 	}
 
-	var voteStatus types.VoteStatus
+	var voteStatus commontypes.VoteStatus
 	k.cdc.MustUnmarshal(bz, &voteStatus)
 	return voteStatus, true
 }
@@ -172,7 +176,7 @@ func (k Keeper) ConfirmTransfer(ctx sdk.Context, txHash string) error {
 
 	// Trigger credit token issuance through netting keeper
 	if k.nettingKeeper != nil {
-		creditToken := types.CreditToken{
+		creditToken := commontypes.CreditToken{
 			Denom:      fmt.Sprintf("cred-%s", eventData.SourceChain),
 			IssuerBank: eventData.SourceChain,
 			HolderBank: eventData.DestChain,
@@ -247,16 +251,118 @@ func (k Keeper) GetValidatorPubKey(ctx sdk.Context, validator string) ([]byte, b
 	return pubKey.Bytes(), true
 }
 
-// VerifySignature verifies a validator's signature
+// VerifySignature verifies a validator's signature using ECDSA
 func (k Keeper) VerifySignature(ctx sdk.Context, validator string, data []byte, signature []byte) bool {
 	pubKey, found := k.GetValidatorPubKey(ctx, validator)
 	if !found {
+		k.Logger(ctx).Error("validator public key not found", "validator", validator)
 		return false
 	}
 
-	// TODO: Implement actual signature verification using the public key
-	// For now, we'll do a basic length check
-	return len(signature) > 0 && len(pubKey) > 0
+	// Basic validation
+	if len(signature) == 0 || len(data) == 0 {
+		k.Logger(ctx).Error("empty signature or data", "validator", validator)
+		return false
+	}
+
+	// For ECDSA signatures, we expect 65 bytes (r=32, s=32, v=1)
+	if len(signature) != 65 {
+		k.Logger(ctx).Error("invalid signature length", "validator", validator, "length", len(signature))
+		return false
+	}
+
+	// Hash the data using SHA256
+	hash := sha256.Sum256(data)
+
+	// Extract r, s, v from signature
+	r := signature[:32]
+	s := signature[32:64]
+	v := signature[64]
+
+	// Recover public key from signature
+	recoveredPubKey, err := crypto.SigToPub(hash[:], signature)
+	if err != nil {
+		k.Logger(ctx).Error("failed to recover public key from signature", "validator", validator, "error", err)
+		return false
+	}
+
+	// Convert recovered public key to bytes for comparison
+	recoveredPubKeyBytes := crypto.FromECDSAPub(recoveredPubKey)
+
+	// For Cosmos validators, we need to handle the public key format conversion
+	// The stored pubKey might be in Cosmos secp256k1 format
+	var expectedPubKeyBytes []byte
+	
+	// Try to parse as Cosmos secp256k1 public key first
+	if len(pubKey) == 33 { // Compressed secp256k1 public key
+		cosmosKey := &secp256k1.PubKey{Key: pubKey}
+		// Convert to uncompressed format for comparison
+		ecdsaPubKey, err := crypto.UnmarshalPubkey(cosmosKey.Bytes())
+		if err != nil {
+			k.Logger(ctx).Error("failed to unmarshal cosmos public key", "validator", validator, "error", err)
+			return false
+		}
+		expectedPubKeyBytes = crypto.FromECDSAPub(ecdsaPubKey)
+	} else if len(pubKey) == 65 { // Uncompressed ECDSA public key
+		expectedPubKeyBytes = pubKey
+	} else {
+		k.Logger(ctx).Error("unsupported public key format", "validator", validator, "length", len(pubKey))
+		return false
+	}
+
+	// Compare recovered public key with stored public key
+	if len(recoveredPubKeyBytes) != len(expectedPubKeyBytes) {
+		k.Logger(ctx).Error("public key length mismatch", "validator", validator)
+		return false
+	}
+
+	for i := 0; i < len(recoveredPubKeyBytes); i++ {
+		if recoveredPubKeyBytes[i] != expectedPubKeyBytes[i] {
+			k.Logger(ctx).Error("public key mismatch", "validator", validator)
+			return false
+		}
+	}
+
+	// Additional validation: verify signature components are valid
+	if !k.isValidSignatureComponents(r, s, v) {
+		k.Logger(ctx).Error("invalid signature components", "validator", validator)
+		return false
+	}
+
+	k.Logger(ctx).Debug("signature verification successful", "validator", validator)
+	return true
+}
+
+// isValidSignatureComponents validates ECDSA signature components
+func (k Keeper) isValidSignatureComponents(r, s []byte, v byte) bool {
+	// Check that r and s are not zero
+	rIsZero := true
+	sIsZero := true
+	
+	for _, b := range r {
+		if b != 0 {
+			rIsZero = false
+			break
+		}
+	}
+	
+	for _, b := range s {
+		if b != 0 {
+			sIsZero = false
+			break
+		}
+	}
+	
+	if rIsZero || sIsZero {
+		return false
+	}
+	
+	// Check v is valid (should be 27 or 28 for Ethereum-style, or 0/1 for some implementations)
+	if v != 0 && v != 1 && v != 27 && v != 28 {
+		return false
+	}
+	
+	return true
 }
 
 // Private helper methods
@@ -267,21 +373,21 @@ func (k Keeper) hasVoted(ctx sdk.Context, txHash, validator string) bool {
 	return store.Has(key)
 }
 
-func (k Keeper) setVote(ctx sdk.Context, vote types.Vote) {
+func (k Keeper) setVote(ctx sdk.Context, vote commontypes.Vote) {
 	store := ctx.KVStore(k.storeKey)
 	key := types.GetVoteKey(vote.TxHash, vote.Validator)
 	bz := k.cdc.MustMarshal(&vote)
 	store.Set(key, bz)
 }
 
-func (k Keeper) setVoteStatus(ctx sdk.Context, voteStatus types.VoteStatus) {
+func (k Keeper) setVoteStatus(ctx sdk.Context, voteStatus commontypes.VoteStatus) {
 	store := ctx.KVStore(k.storeKey)
 	key := types.GetVoteStatusKey(voteStatus.TxHash)
 	bz := k.cdc.MustMarshal(&voteStatus)
 	store.Set(key, bz)
 }
 
-func (k Keeper) setConfirmedTransfer(ctx sdk.Context, txHash string, eventData types.TransferEvent) {
+func (k Keeper) setConfirmedTransfer(ctx sdk.Context, txHash string, eventData commontypes.TransferEvent) {
 	store := ctx.KVStore(k.storeKey)
 	key := types.GetConfirmedTransferKey(txHash)
 	bz := k.cdc.MustMarshal(&eventData)
