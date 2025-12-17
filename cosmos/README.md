@@ -29,26 +29,42 @@ The Cosmos Hub acts as the central clearing engine that:
 
 ```bash
 # Install dependencies
-go mod download
+go mod tidy
 
 # Build the daemon
 make build
+# or manually:
+go build -o build/interbank-nettingd ./cmd/interbank-nettingd
 
-# Install globally
+# Install globally (optional)
 make install
 ```
 
 ## Testing
 
 ```bash
-# Run unit tests
-make test-unit
-
-# Run property-based tests (minimum 100 iterations each)
-make test-property
-
 # Run all tests
-make test-all
+go test ./...
+
+# Run tests with verbose output
+go test ./... -v
+
+# Run specific module tests
+go test ./x/oracle/keeper -v
+go test ./x/netting/keeper -v  
+go test ./x/multisig/keeper -v
+
+# Run only property-based tests (minimum 100 iterations each)
+go test ./x/oracle/keeper -v -run TestProperty
+go test ./x/netting/keeper -v -run TestProperty
+go test ./x/multisig/keeper -v -run TestProperty
+
+# Run tests with coverage
+go test ./... -cover
+
+# Generate coverage report
+go test ./... -coverprofile=coverage.out
+go tool cover -html=coverage.out -o coverage.html
 ```
 
 ## Property-Based Testing
@@ -72,20 +88,47 @@ Each correctness property from the design document is implemented as a separate 
 ### Running Locally
 
 ```bash
-# Initialize node
-interbank-nettingd init mynode --chain-id interbank-netting
+# Build first
+make build
 
-# Add genesis account
-interbank-nettingd add-genesis-account cosmos1... 1000000000stake
+# Initialize node
+./build/interbank-nettingd init mynode --chain-id interbank-netting
+
+# Create a key for validator
+./build/interbank-nettingd keys add validator
+
+# Add genesis account (replace with actual address)
+./build/interbank-nettingd add-genesis-account $(./build/interbank-nettingd keys show validator -a) 1000000000stake
 
 # Create genesis transaction
-interbank-nettingd gentx mykey 1000000stake --chain-id interbank-netting
+./build/interbank-nettingd gentx validator 1000000stake --chain-id interbank-netting
 
 # Collect genesis transactions
-interbank-nettingd collect-gentxs
+./build/interbank-nettingd collect-gentxs
+
+# Validate genesis file
+./build/interbank-nettingd validate-genesis
 
 # Start node
-interbank-nettingd start
+./build/interbank-nettingd start
+```
+
+### Useful Commands
+
+```bash
+# Check node status
+curl http://localhost:26657/status
+
+# Query account balance
+./build/interbank-nettingd query bank balances $(./build/interbank-nettingd keys show validator -a)
+
+# Send transaction (example)
+./build/interbank-nettingd tx bank send validator cosmos1... 1000stake --chain-id interbank-netting
+
+# Query module-specific data
+./build/interbank-nettingd query oracle vote-status <tx-hash>
+./build/interbank-nettingd query netting credit-balance <bank-id> <denom>
+./build/interbank-nettingd query multisig validator-set
 ```
 
 ## Configuration
