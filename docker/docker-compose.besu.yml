@@ -1,0 +1,50 @@
+version: '3.8'
+
+services:
+  bank-a:
+    image: hyperledger/besu:latest
+    container_name: bank-a-besu
+    ports:
+      - "8545:8545"  # HTTP RPC
+      - "8546:8546"  # WebSocket RPC
+      - "30303:30303" # P2P
+    volumes:
+      - ../besu-networks/bank-a:/opt/besu/bank-a
+      - ../besu-networks/genesis.json:/opt/besu/genesis.json
+      - bank-a-data:/opt/besu/data
+    working_dir: /opt/besu
+    command: [
+      "--config-file=/opt/besu/bank-a/config.toml",
+      "--genesis-file=/opt/besu/genesis.json"
+    ]
+    networks:
+      - besu-network
+    restart: unless-stopped
+
+  bank-b:
+    image: hyperledger/besu:latest
+    container_name: bank-b-besu
+    ports:
+      - "8547:8546"  # HTTP RPC (mapped to avoid conflict)
+      - "8548:8547"  # WebSocket RPC (mapped to avoid conflict)
+      - "30304:30304" # P2P
+    volumes:
+      - ../besu-networks/bank-b:/opt/besu/bank-b
+      - ../besu-networks/genesis.json:/opt/besu/genesis.json
+      - bank-b-data:/opt/besu/data
+    working_dir: /opt/besu
+    command: [
+      "--config-file=/opt/besu/bank-b/config.toml",
+      "--genesis-file=/opt/besu/genesis.json"
+    ]
+    networks:
+      - besu-network
+    restart: unless-stopped
+
+volumes:
+  bank-a-data:
+  bank-b-data:
+
+networks:
+  besu-network:
+    driver: bridge

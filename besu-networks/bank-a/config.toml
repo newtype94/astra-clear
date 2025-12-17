@@ -1,0 +1,28 @@
+# Bank A Besu Configuration
+data-path="data"
+genesis-file="../genesis.json"
+
+# Network settings
+network-id=1337
+p2p-port=30303
+rpc-http-enabled=true
+rpc-http-api=["ETH","NET","WEB3","ADMIN","DEBUG","TXPOOL"]
+rpc-http-cors-origins=["*"]
+rpc-http-host="0.0.0.0"
+rpc-http-port=8545
+
+# WebSocket settings
+rpc-ws-enabled=true
+rpc-ws-api=["ETH","NET","WEB3","ADMIN","DEBUG","TXPOOL"]
+rpc-ws-host="0.0.0.0"
+rpc-ws-port=8546
+
+# Mining settings
+miner-enabled=true
+miner-coinbase="0xfe3b557e8fb62b89f4916b721be55ceb828dbd73"
+
+# Logging
+logging="INFO"
+
+# Discovery
+discovery-enabled=false
