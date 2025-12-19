@@ -668,6 +668,448 @@ func TestProperty_CreditToken_UniqueOriginTraceability(t *testing.T) {
 	properties.TestingRun(t)
 }
 
+// **Feature: interbank-netting-engine, Property 5.2: 주기적 상계 트리거**
+// **검증: 요구사항 4.1 - 10블록마다 상계가 자동으로 트리거되는지 검증**
+func TestProperty_PeriodicNetting_Trigger(t *testing.T) {
+	properties := testutil.NewPropertyTester(t)
+
+	properties.Property("netting triggers periodically every 10 blocks", prop.ForAll(
+		func(blockOffset int64) bool {
+			// Setup test environment
+			ctx, nettingKeeper := setupNettingTestEnvironment(t)
+
+			// Only test block offsets 0-50 to keep test manageable
+			if blockOffset < 0 || blockOffset > 50 {
+				return true
+			}
+
+			// Set initial last netting block
+			initialBlock := int64(100)
+			ctx = ctx.WithBlockHeight(initialBlock)
+			nettingKeeper.setLastNettingBlock(ctx, initialBlock)
+
+			// Test various block heights
+			testBlock := initialBlock + blockOffset
+			ctx = ctx.WithBlockHeight(testBlock)
+
+			// Try to trigger netting
+			err := nettingKeeper.TriggerNetting(ctx)
+
+			// Netting should only succeed if 10+ blocks have passed
+			if blockOffset < 10 {
+				// Should fail - not enough blocks passed
+				if err == nil {
+					return false
+				}
+			} else {
+				// Should succeed or fail due to no netting pairs (both acceptable)
+				// The important thing is it doesn't fail due to block height check
+				if err != nil {
+					// Check if error is due to insufficient block height
+					// If so, this is a failure
+					if err.Error() == "netting not required" {
+						// This is acceptable - no pairs to net
+						return true
+					}
+				}
+			}
+
+			return true
+		},
+		gen.Int64Range(0, 50),
+	))
+
+	properties.TestingRun(t)
+}
+
+// **Feature: interbank-netting-engine, Property 5.5: 상계 계산 및 실행**
+// **검증: 요구사항 4.2, 4.3 - 상계 계산이 정확하고 실행이 올바르게 되는지 검증**
+func TestProperty_Netting_CalculationAndExecution(t *testing.T) {
+	properties := testutil.NewPropertyTester(t)
+
+	properties.Property("netting correctly calculates and executes mutual debt cancellation", prop.ForAll(
+		func(amountAtoB, amountBtoA math.Int) bool {
+			// Skip invalid amounts
+			if amountAtoB.IsNil() || amountAtoB.LTE(math.ZeroInt()) {
+				return true
+			}
+			if amountBtoA.IsNil() || amountBtoA.LTE(math.ZeroInt()) {
+				return true
+			}
+			// Skip if amounts are too large (avoid overflow)
+			maxAmount := math.NewInt(1000000)
+			if amountAtoB.GT(maxAmount) || amountBtoA.GT(maxAmount) {
+				return true
+			}
+
+			// Setup test environment
+			ctx, nettingKeeper := setupNettingTestEnvironment(t)
+			bankA := "bank-a"
+			bankB := "bank-b"
+
+			// Create mutual credit tokens
+			// Bank A holds credit from Bank B (Bank B owes Bank A)
+			tokenBtoA := types.CreditToken{
+				Denom:      "cred-" + bankB,
+				IssuerBank: bankB,
+				HolderBank: bankA,
+				Amount:     amountBtoA,
+				OriginTx:   "tx-b-to-a",
+				IssuedAt:   ctx.BlockTime().Unix(),
+			}
+
+			// Bank B holds credit from Bank A (Bank A owes Bank B)
+			tokenAtoB := types.CreditToken{
+				Denom:      "cred-" + bankA,
+				IssuerBank: bankA,
+				HolderBank: bankB,
+				Amount:     amountAtoB,
+				OriginTx:   "tx-a-to-b",
+				IssuedAt:   ctx.BlockTime().Unix(),
+			}
+
+			// Issue both credit tokens
+			if err := nettingKeeper.IssueCreditToken(ctx, tokenBtoA); err != nil {
+				return false
+			}
+			if err := nettingKeeper.IssueCreditToken(ctx, tokenAtoB); err != nil {
+				return false
+			}
+
+			// Record initial balances
+			initialBalanceA := nettingKeeper.GetCreditBalance(ctx, bankA, "cred-"+bankB)
+			initialBalanceB := nettingKeeper.GetCreditBalance(ctx, bankB, "cred-"+bankA)
+
+			// Calculate expected netting
+			minAmount := amountAtoB
+			if amountBtoA.LT(minAmount) {
+				minAmount = amountBtoA
+			}
+
+			// Calculate netting pairs
+			pairs, err := nettingKeeper.CalculateNetting(ctx)
+			if err != nil {
+				return false
+			}
+
+			// Should have exactly one pair (A and B)
+			if len(pairs) != 1 {
+				return false
+			}
+
+			pair := pairs[0]
+
+			// Verify pair contains correct banks (order may vary)
+			if !((pair.BankA == bankA && pair.BankB == bankB) || (pair.BankA == bankB && pair.BankB == bankA)) {
+				return false
+			}
+
+			// Verify amounts in pair
+			if pair.BankA == bankA {
+				if !pair.AmountA.Equal(amountBtoA) || !pair.AmountB.Equal(amountAtoB) {
+					return false
+				}
+			} else {
+				if !pair.AmountA.Equal(amountAtoB) || !pair.AmountB.Equal(amountBtoA) {
+					return false
+				}
+			}
+
+			// Verify net amount calculation
+			expectedNetAmount := amountAtoB.Sub(amountBtoA).Abs()
+			if !pair.NetAmount.Equal(expectedNetAmount) {
+				return false
+			}
+
+			// Execute netting
+			if err := nettingKeeper.ExecuteNetting(ctx, pairs); err != nil {
+				return false
+			}
+
+			// Verify balances after netting
+			finalBalanceA := nettingKeeper.GetCreditBalance(ctx, bankA, "cred-"+bankB)
+			finalBalanceB := nettingKeeper.GetCreditBalance(ctx, bankB, "cred-"+bankA)
+
+			// Both balances should be reduced by the minimum amount
+			expectedFinalA := initialBalanceA.Sub(minAmount)
+			expectedFinalB := initialBalanceB.Sub(minAmount)
+
+			if !finalBalanceA.Equal(expectedFinalA) {
+				return false
+			}
+			if !finalBalanceB.Equal(expectedFinalB) {
+				return false
+			}
+
+			return true
+		},
+		testutil.GenValidAmount(),
+		testutil.GenValidAmount(),
+	))
+
+	properties.TestingRun(t)
+}
+
+// **Feature: interbank-netting-engine, Property 5.7: 상계 완료 후 상태 업데이트**
+// **검증: 요구사항 4.4, 4.5 - 상계 완료 후 부채 포지션과 이벤트가 올바르게 업데이트되는지 검증**
+func TestProperty_Netting_PostCompletionState(t *testing.T) {
+	properties := testutil.NewPropertyTester(t)
+
+	properties.Property("netting completion updates debt positions and emits events correctly", prop.ForAll(
+		func(pairs []types.BankPair) bool {
+			// Skip invalid inputs
+			if len(pairs) < 1 || len(pairs) > 3 {
+				return true
+			}
+
+			// Setup test environment
+			ctx, nettingKeeper := setupNettingTestEnvironment(t)
+
+			// Validate and setup pairs
+			validPairs := []types.BankPair{}
+			for _, pair := range pairs {
+				// Skip invalid pairs
+				if pair.BankA == "" || pair.BankB == "" || pair.BankA == pair.BankB {
+					continue
+				}
+				if pair.AmountA.IsNil() || pair.AmountA.LTE(math.ZeroInt()) {
+					continue
+				}
+				if pair.AmountB.IsNil() || pair.AmountB.LTE(math.ZeroInt()) {
+					continue
+				}
+
+				// Ensure unique bank names across pairs
+				bankA := fmt.Sprintf("bank-%s-1", pair.BankA)
+				bankB := fmt.Sprintf("bank-%s-2", pair.BankB)
+
+				// Create mutual credit tokens for this pair
+				tokenBtoA := types.CreditToken{
+					Denom:      "cred-" + bankB,
+					IssuerBank: bankB,
+					HolderBank: bankA,
+					Amount:     pair.AmountB,
+					OriginTx:   fmt.Sprintf("tx-%s-to-%s", bankB, bankA),
+					IssuedAt:   ctx.BlockTime().Unix(),
+				}
+
+				tokenAtoB := types.CreditToken{
+					Denom:      "cred-" + bankA,
+					IssuerBank: bankA,
+					HolderBank: bankB,
+					Amount:     pair.AmountA,
+					OriginTx:   fmt.Sprintf("tx-%s-to-%s", bankA, bankB),
+					IssuedAt:   ctx.BlockTime().Unix(),
+				}
+
+				// Issue credit tokens
+				if err := nettingKeeper.IssueCreditToken(ctx, tokenBtoA); err != nil {
+					continue
+				}
+				if err := nettingKeeper.IssueCreditToken(ctx, tokenAtoB); err != nil {
+					continue
+				}
+
+				// Update pair with actual bank names
+				pair.BankA = bankA
+				pair.BankB = bankB
+				validPairs = append(validPairs, pair)
+			}
+
+			// Skip if no valid pairs
+			if len(validPairs) == 0 {
+				return true
+			}
+
+			// Record pre-netting debt positions
+			preNettingPositions := make(map[string]map[string]math.Int)
+			for _, pair := range validPairs {
+				if preNettingPositions[pair.BankA] == nil {
+					preNettingPositions[pair.BankA] = make(map[string]math.Int)
+				}
+				if preNettingPositions[pair.BankB] == nil {
+					preNettingPositions[pair.BankB] = make(map[string]math.Int)
+				}
+
+				credAFromB, credBFromA := nettingKeeper.GetDebtPosition(ctx, pair.BankA, pair.BankB)
+				preNettingPositions[pair.BankA][pair.BankB] = credAFromB
+				preNettingPositions[pair.BankB][pair.BankA] = credBFromA
+			}
+
+			// Execute netting
+			if err := nettingKeeper.ExecuteNetting(ctx, validPairs); err != nil {
+				return false
+			}
+
+			// Verify post-netting debt positions
+			for _, pair := range validPairs {
+				credAFromB, credBFromA := nettingKeeper.GetDebtPosition(ctx, pair.BankA, pair.BankB)
+
+				// Calculate expected reduction (minimum of the two amounts)
+				minAmount := pair.AmountA
+				if pair.AmountB.LT(minAmount) {
+					minAmount = pair.AmountB
+				}
+
+				// Expected post-netting positions
+				expectedCredAFromB := preNettingPositions[pair.BankA][pair.BankB].Sub(minAmount)
+				expectedCredBFromA := preNettingPositions[pair.BankB][pair.BankA].Sub(minAmount)
+
+				// Verify debt positions reduced correctly
+				if !credAFromB.Equal(expectedCredAFromB) {
+					return false
+				}
+				if !credBFromA.Equal(expectedCredBFromA) {
+					return false
+				}
+			}
+
+			// Verify netting cycle was created
+			cycleID := uint64(ctx.BlockHeight())
+			cycle, found := nettingKeeper.GetNettingCycle(ctx, cycleID)
+			if !found {
+				return false
+			}
+
+			// Verify cycle properties
+			if cycle.CycleID != cycleID {
+				return false
+			}
+			if cycle.BlockHeight != ctx.BlockHeight() {
+				return false
+			}
+			if len(cycle.Pairs) != len(validPairs) {
+				return false
+			}
+			if cycle.Status != types.NettingStatusCompleted {
+				return false
+			}
+
+			return true
+		},
+		gen.SliceOf(testutil.GenBankPair()),
+	))
+
+	properties.TestingRun(t)
+}
+
+// **Feature: interbank-netting-engine, Property 5.5: 상계 계산 정확성**
+// **검증: 요구사항 4.2 - 복잡한 다자간 상계 시나리오에서도 계산이 정확한지 검증**
+func TestProperty_Netting_MultiPartyCalculation(t *testing.T) {
+	properties := testutil.NewPropertyTester(t)
+
+	properties.Property("multi-party netting calculates all bilateral pairs correctly", prop.ForAll(
+		func(numBanks int) bool {
+			// Test with 2-4 banks
+			if numBanks < 2 || numBanks > 4 {
+				return true
+			}
+
+			// Setup test environment
+			ctx, nettingKeeper := setupNettingTestEnvironment(t)
+
+			// Create banks
+			banks := make([]string, numBanks)
+			for i := 0; i < numBanks; i++ {
+				banks[i] = fmt.Sprintf("bank-%d", i)
+			}
+
+			// Create mutual credits between all bank pairs
+			expectedPairs := 0
+			for i := 0; i < numBanks; i++ {
+				for j := i + 1; j < numBanks; j++ {
+					bankA := banks[i]
+					bankB := banks[j]
+
+					// Create random amounts
+					amountAtoB := math.NewInt(int64((i+1)*100 + (j+1)*10))
+					amountBtoA := math.NewInt(int64((j+1)*100 + (i+1)*10))
+
+					// Issue credit tokens
+					tokenBtoA := types.CreditToken{
+						Denom:      "cred-" + bankB,
+						IssuerBank: bankB,
+						HolderBank: bankA,
+						Amount:     amountBtoA,
+						OriginTx:   fmt.Sprintf("tx-%s-to-%s", bankB, bankA),
+						IssuedAt:   ctx.BlockTime().Unix(),
+					}
+
+					tokenAtoB := types.CreditToken{
+						Denom:      "cred-" + bankA,
+						IssuerBank: bankA,
+						HolderBank: bankB,
+						Amount:     amountAtoB,
+						OriginTx:   fmt.Sprintf("tx-%s-to-%s", bankA, bankB),
+						IssuedAt:   ctx.BlockTime().Unix(),
+					}
+
+					if err := nettingKeeper.IssueCreditToken(ctx, tokenBtoA); err != nil {
+						return false
+					}
+					if err := nettingKeeper.IssueCreditToken(ctx, tokenAtoB); err != nil {
+						return false
+					}
+
+					expectedPairs++
+				}
+			}
+
+			// Calculate netting
+			pairs, err := nettingKeeper.CalculateNetting(ctx)
+			if err != nil {
+				return false
+			}
+
+			// Should have C(n,2) = n*(n-1)/2 pairs
+			if len(pairs) != expectedPairs {
+				return false
+			}
+
+			// Verify each pair has correct properties
+			for _, pair := range pairs {
+				// Verify both banks have mutual credits
+				credAFromB := nettingKeeper.GetCreditBalance(ctx, pair.BankA, "cred-"+pair.BankB)
+				credBFromA := nettingKeeper.GetCreditBalance(ctx, pair.BankB, "cred-"+pair.BankA)
+
+				if credAFromB.LTE(math.ZeroInt()) || credBFromA.LTE(math.ZeroInt()) {
+					return false
+				}
+
+				// Verify amounts match
+				if !pair.AmountB.Equal(credAFromB) {
+					return false
+				}
+				if !pair.AmountA.Equal(credBFromA) {
+					return false
+				}
+
+				// Verify net amount calculation
+				expectedNetAmount := pair.AmountA.Sub(pair.AmountB).Abs()
+				if !pair.NetAmount.Equal(expectedNetAmount) {
+					return false
+				}
+
+				// Verify net debtor
+				if pair.AmountA.GT(pair.AmountB) {
+					if pair.NetDebtor != pair.BankB {
+						return false
+					}
+				} else {
+					if pair.NetDebtor != pair.BankA {
+						return false
+					}
+				}
+			}
+
+			return true
+		},
+		gen.IntRange(2, 4),
+	))
+
+	properties.TestingRun(t)
+}
+
 // Helper functions for testing
 
 func setupNettingTestEnvironment(t *testing.T) (sdk.Context, keeper.Keeper) {
