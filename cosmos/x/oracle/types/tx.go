@@ -1,5 +1,7 @@
 package types
 
+import "context"
+
 // MsgVoteResponse defines the response for MsgVote
 type MsgVoteResponse struct {
 	Success   bool `json:"success"`
@@ -15,5 +17,3 @@ type MsgServer interface {
 // In a real implementation, this would be generated from .proto files
 var _Msg_serviceDesc = struct{}{}
 
-// Context import for interface
-import "context"

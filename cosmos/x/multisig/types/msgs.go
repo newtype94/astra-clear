@@ -1,6 +1,7 @@
 package types
 
 import (
+	"cosmossdk.io/math"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	sdkerrors "github.com/cosmos/cosmos-sdk/types/errors"
 	"github.com/interbank-netting/cosmos/types"
@@ -24,14 +25,14 @@ var (
 
 // MsgGenerateMintCommand defines a message for generating mint commands
 type MsgGenerateMintCommand struct {
-	Generator   string  `json:"generator"`
-	TargetChain string  `json:"target_chain"`
-	Recipient   string  `json:"recipient"`
-	Amount      sdk.Int `json:"amount"`
+	Generator   string    `json:"generator"`
+	TargetChain string    `json:"target_chain"`
+	Recipient   string    `json:"recipient"`
+	Amount      math.Int  `json:"amount"`
 }
 
 // NewMsgGenerateMintCommand creates a new MsgGenerateMintCommand instance
-func NewMsgGenerateMintCommand(generator, targetChain, recipient string, amount sdk.Int) *MsgGenerateMintCommand {
+func NewMsgGenerateMintCommand(generator, targetChain, recipient string, amount math.Int) *MsgGenerateMintCommand {
 	return &MsgGenerateMintCommand{
 		Generator:   generator,
 		TargetChain: targetChain,
@@ -84,7 +85,7 @@ func (msg MsgGenerateMintCommand) ValidateBasic() error {
 		return sdkerrors.Wrap(sdkerrors.ErrInvalidRequest, "recipient cannot be empty")
 	}
 	
-	if msg.Amount.IsNil() || msg.Amount.LTE(sdk.ZeroInt()) {
+	if msg.Amount.IsNil() || msg.Amount.LTE(math.ZeroInt()) {
 		return sdkerrors.Wrap(sdkerrors.ErrInvalidRequest, "amount must be positive")
 	}
 	

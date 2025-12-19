@@ -1,7 +1,9 @@
 package types
 
 import (
+	"cosmossdk.io/math"
 	sdk "github.com/cosmos/cosmos-sdk/types"
+	stakingtypes "github.com/cosmos/cosmos-sdk/x/staking/types"
 )
 
 // OracleKeeper defines the expected interface for the oracle module
@@ -22,14 +24,14 @@ type OracleKeeper interface {
 type NettingKeeper interface {
 	// Credit token management
 	IssueCreditToken(ctx sdk.Context, token CreditToken) error
-	BurnCreditToken(ctx sdk.Context, denom string, amount sdk.Int) error
-	TransferCreditToken(ctx sdk.Context, from, to, denom string, amount sdk.Int) error
-	
+	BurnCreditToken(ctx sdk.Context, denom string, amount math.Int) error
+	TransferCreditToken(ctx sdk.Context, from, to, denom string, amount math.Int) error
+
 	// Balance queries
-	GetCreditBalance(ctx sdk.Context, bank, denom string) sdk.Int
-	GetAllCreditBalances(ctx sdk.Context, bank string) map[string]sdk.Int
-	GetDebtPosition(ctx sdk.Context, bankA, bankB string) (sdk.Int, sdk.Int)
-	
+	GetCreditBalance(ctx sdk.Context, bank, denom string) math.Int
+	GetAllCreditBalances(ctx sdk.Context, bank string) map[string]math.Int
+	GetDebtPosition(ctx sdk.Context, bankA, bankB string) (math.Int, math.Int)
+
 	// Netting operations
 	TriggerNetting(ctx sdk.Context) error
 	CalculateNetting(ctx sdk.Context) ([]BankPair, error)
@@ -44,13 +46,13 @@ type MultisigKeeper interface {
 	UpdateValidatorSet(ctx sdk.Context, validators []Validator) error
 	AddValidator(ctx sdk.Context, validator Validator) error
 	RemoveValidator(ctx sdk.Context, address string) error
-	
+
 	// Command generation and signing
-	GenerateMintCommand(ctx sdk.Context, targetChain, recipient string, amount sdk.Int) (MintCommand, error)
+	GenerateMintCommand(ctx sdk.Context, targetChain, recipient string, amount math.Int) (MintCommand, error)
 	CollectSignatures(ctx sdk.Context, commandID string) error
 	VerifyCommand(ctx sdk.Context, command MintCommand) bool
 	GetCommand(ctx sdk.Context, commandID string) (MintCommand, bool)
-	
+
 	// ECDSA operations
 	SignData(ctx sdk.Context, validator string, data []byte) (ECDSASignature, error)
 	VerifyECDSASignature(ctx sdk.Context, data []byte, signature ECDSASignature) bool
@@ -74,16 +76,16 @@ type AccountKeeper interface {
 
 // StakingKeeper defines the expected interface for the staking module
 type StakingKeeper interface {
-	GetValidator(ctx sdk.Context, addr sdk.ValAddress) (validator sdk.ValidatorI, found bool)
-	GetAllValidators(ctx sdk.Context) (validators []sdk.ValidatorI)
-	GetBondedValidatorsByPower(ctx sdk.Context) []sdk.ValidatorI
+	GetValidator(ctx sdk.Context, addr sdk.ValAddress) (validator stakingtypes.ValidatorI, found bool)
+	GetAllValidators(ctx sdk.Context) (validators []stakingtypes.ValidatorI)
+	GetBondedValidatorsByPower(ctx sdk.Context) []stakingtypes.ValidatorI
 }
 
 // EventEmitter defines the interface for emitting blockchain events
 type EventEmitter interface {
 	EmitTransferConfirmed(ctx sdk.Context, event TransferEvent)
 	EmitCreditIssued(ctx sdk.Context, token CreditToken)
-	EmitCreditBurned(ctx sdk.Context, denom string, amount sdk.Int)
+	EmitCreditBurned(ctx sdk.Context, denom string, amount math.Int)
 	EmitNettingCompleted(ctx sdk.Context, cycle NettingCycle)
 	EmitMintCommandGenerated(ctx sdk.Context, command MintCommand)
 	EmitValidatorSetUpdated(ctx sdk.Context, validatorSet ValidatorSet)

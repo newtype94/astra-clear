@@ -6,6 +6,8 @@ const (
 	EventTypeTransferConfirmed = "transfer_confirmed"
 	EventTypeConsensusReached  = "consensus_reached"
 	EventTypeVoteRejected      = "vote_rejected"
+	EventTypeTransferRejected  = "transfer_rejected"
+	EventTypeConsensusTimeout  = "consensus_timeout"
 )
 
 // Oracle module event attribute keys

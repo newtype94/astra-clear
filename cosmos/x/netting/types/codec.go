@@ -5,7 +5,6 @@ import (
 	cdctypes "github.com/cosmos/cosmos-sdk/codec/types"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	"github.com/cosmos/cosmos-sdk/types/msgservice"
-	grpc1 "github.com/gogo/protobuf/grpc"
 )
 
 // RegisterCodec registers the necessary x/netting interfaces and concrete types
@@ -28,9 +27,7 @@ func RegisterInterfaces(registry cdctypes.InterfaceRegistry) {
 }
 
 // RegisterMsgServer registers the msg server
-func RegisterMsgServer(s grpc1.Server, srv MsgServer) {
-	// TODO: Implement when protobuf is available
-}
+// TODO: Implement when protobuf is available
 
 var (
 	Amino     = codec.NewLegacyAmino()

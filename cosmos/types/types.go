@@ -1,7 +1,7 @@
 package types
 
 import (
-	sdk "github.com/cosmos/cosmos-sdk/types"
+	"cosmossdk.io/math"
 )
 
 // TransferEvent represents a cross-chain transfer event from Besu networks
@@ -9,7 +9,7 @@ type TransferEvent struct {
 	TxHash      string    `json:"tx_hash"`
 	Sender      string    `json:"sender"`
 	Recipient   string    `json:"recipient"`
-	Amount      sdk.Int   `json:"amount"`
+	Amount      math.Int  `json:"amount"`
 	Nonce       uint64    `json:"nonce"`
 	SourceChain string    `json:"source_chain"`
 	DestChain   string    `json:"dest_chain"`
@@ -39,33 +39,33 @@ type VoteStatus struct {
 
 // CreditToken represents a bank-issued credit token (IOU)
 type CreditToken struct {
-	Denom       string  `json:"denom"`        // Format: "cred-{BankID}"
-	IssuerBank  string  `json:"issuer_bank"`  // Bank that issued this credit
-	HolderBank  string  `json:"holder_bank"`  // Bank that holds this credit
-	Amount      sdk.Int `json:"amount"`       // Amount of credit
-	OriginTx    string  `json:"origin_tx"`    // Original transfer transaction hash
-	IssuedAt    int64   `json:"issued_at"`    // Timestamp when issued
+	Denom       string    `json:"denom"`        // Format: "cred-{BankID}"
+	IssuerBank  string    `json:"issuer_bank"`  // Bank that issued this credit
+	HolderBank  string    `json:"holder_bank"`  // Bank that holds this credit
+	Amount      math.Int  `json:"amount"`       // Amount of credit
+	OriginTx    string    `json:"origin_tx"`    // Original transfer transaction hash
+	IssuedAt    int64     `json:"issued_at"`    // Timestamp when issued
 }
 
 // NettingCycle represents a netting operation cycle
 type NettingCycle struct {
 	CycleID     uint64                `json:"cycle_id"`
 	BlockHeight int64                 `json:"block_height"`
-	Pairs       []BankPair           `json:"pairs"`
-	NetAmounts  map[string]sdk.Int   `json:"net_amounts"`
-	StartTime   int64                `json:"start_time"`
-	EndTime     int64                `json:"end_time"`
-	Status      NettingStatus        `json:"status"`
+	Pairs       []BankPair            `json:"pairs"`
+	NetAmounts  map[string]math.Int   `json:"net_amounts"`
+	StartTime   int64                 `json:"start_time"`
+	EndTime     int64                 `json:"end_time"`
+	Status      NettingStatus         `json:"status"`
 }
 
 // BankPair represents a pair of banks involved in netting
 type BankPair struct {
-	BankA   string  `json:"bank_a"`
-	BankB   string  `json:"bank_b"`
-	AmountA sdk.Int `json:"amount_a"` // Amount A owes to B
-	AmountB sdk.Int `json:"amount_b"` // Amount B owes to A
-	NetAmount sdk.Int `json:"net_amount"` // Net amount after netting
-	NetDebtor string  `json:"net_debtor"` // Which bank owes the net amount
+	BankA     string    `json:"bank_a"`
+	BankB     string    `json:"bank_b"`
+	AmountA   math.Int  `json:"amount_a"`     // Amount A owes to B
+	AmountB   math.Int  `json:"amount_b"`     // Amount B owes to A
+	NetAmount math.Int  `json:"net_amount"`   // Net amount after netting
+	NetDebtor string    `json:"net_debtor"`   // Which bank owes the net amount
 }
 
 // NettingStatus represents the status of a netting cycle
@@ -100,7 +100,7 @@ type MintCommand struct {
 	CommandID   string            `json:"command_id"`
 	TargetChain string            `json:"target_chain"`
 	Recipient   string            `json:"recipient"`
-	Amount      sdk.Int           `json:"amount"`
+	Amount      math.Int          `json:"amount"`
 	Signatures  []ECDSASignature  `json:"signatures"`
 	CreatedAt   int64             `json:"created_at"`
 	Status      CommandStatus     `json:"status"`

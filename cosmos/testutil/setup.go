@@ -2,15 +2,13 @@ package testutil
 
 import (
 	"testing"
-	"time"
 
+	"cosmossdk.io/math"
 	"github.com/leanovate/gopter"
 	"github.com/leanovate/gopter/gen"
-	"github.com/leanovate/gopter/prop"
-	
+
 	sdk "github.com/cosmos/cosmos-sdk/types"
-	"github.com/cosmos/cosmos-sdk/testutil/testdata"
-	
+
 	"github.com/interbank-netting/cosmos/types"
 )
 
@@ -19,7 +17,6 @@ type PropertyTestConfig struct {
 	MinSuccessfulTests int
 	MaxDiscardRatio    float64
 	Workers            int
-	Rng                *gopter.LockedSource
 }
 
 // DefaultPropertyTestConfig returns default configuration for property tests
@@ -28,19 +25,16 @@ func DefaultPropertyTestConfig() *PropertyTestConfig {
 		MinSuccessfulTests: 100, // Minimum 100 iterations as specified
 		MaxDiscardRatio:    5.0,
 		Workers:            1,
-		Rng:                gopter.NewLockedSource(time.Now().UnixNano()),
 	}
 }
 
 // NewPropertyTester creates a new property tester with default configuration
 func NewPropertyTester(t *testing.T) *gopter.Properties {
 	config := DefaultPropertyTestConfig()
-	parameters := &gopter.TestParameters{
-		MinSuccessfulTests: config.MinSuccessfulTests,
-		MaxDiscardRatio:    config.MaxDiscardRatio,
-		Workers:            config.Workers,
-		Rng:                config.Rng,
-	}
+	parameters := gopter.DefaultTestParameters()
+	parameters.MinSuccessfulTests = config.MinSuccessfulTests
+	parameters.MaxDiscardRatio = config.MaxDiscardRatio
+	parameters.Workers = config.Workers
 	return gopter.NewProperties(parameters)
 }
 
@@ -55,8 +49,8 @@ func GenValidAddress() gopter.Gen {
 
 // GenValidAmount generates valid positive amounts
 func GenValidAmount() gopter.Gen {
-	return gen.Int64Range(1, 1000000).Map(func(i int64) sdk.Int {
-		return sdk.NewInt(i)
+	return gen.Int64Range(1, 1000000).Map(func(i int64) math.Int {
+		return math.NewInt(i)
 	})
 }
 
@@ -82,7 +76,7 @@ func GenTransferEvent() gopter.Gen {
 			TxHash:      values[0].(string),
 			Sender:      values[1].(string),
 			Recipient:   values[2].(string),
-			Amount:      values[3].(sdk.Int),
+			Amount:      values[3].(math.Int),
 			Nonce:       values[4].(uint64),
 			SourceChain: values[5].(string),
 			DestChain:   values[6].(string),
@@ -106,7 +100,7 @@ func GenCreditToken() gopter.Gen {
 			Denom:      "cred-" + issuerBank,
 			IssuerBank: issuerBank,
 			HolderBank: values[1].(string),
-			Amount:     values[2].(sdk.Int),
+			Amount:     values[2].(math.Int),
 			OriginTx:   values[3].(string),
 			IssuedAt:   values[4].(int64),
 		}
@@ -126,10 +120,10 @@ func GenBankPair() gopter.Gen {
 	}).Map(func(values []interface{}) types.BankPair {
 		bankA := values[0].(string)
 		bankB := values[1].(string)
-		amountA := values[2].(sdk.Int)
-		amountB := values[3].(sdk.Int)
+		amountA := values[2].(math.Int)
+		amountB := values[3].(math.Int)
 		
-		var netAmount sdk.Int
+		var netAmount math.Int
 		var netDebtor string
 		
 		if amountA.GT(amountB) {
@@ -202,7 +196,7 @@ func GenMintCommand() gopter.Gen {
 			CommandID:   values[0].(string),
 			TargetChain: values[1].(string),
 			Recipient:   values[2].(string),
-			Amount:      values[3].(sdk.Int),
+			Amount:      values[3].(math.Int),
 			Signatures:  []types.ECDSASignature{}, // Empty initially
 			CreatedAt:   values[4].(int64),
 			Status:      types.CommandStatusPending,
@@ -253,4 +247,15 @@ func (h *TestHelper) AssertFalse(condition bool, message string) {
 	if condition {
 		h.t.Fatal(message)
 	}
+}
+
+// SetupOracleKeeper creates a test environment for oracle keeper
+// Returns a context and a generic interface to avoid circular imports
+// Tests should cast to the appropriate keeper type
+func SetupOracleKeeper(t *testing.T) (sdk.Context, interface{}) {
+	// This is a placeholder - actual implementation requires proper cosmos-sdk setup
+	// For now, we return nil values to allow compilation
+	// TODO: Implement proper test setup with cosmos-sdk test utilities
+	ctx := sdk.Context{}
+	return ctx, nil
 }

@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/cometbft/cometbft/libs/log"
+	"cosmossdk.io/math"
 	"github.com/cosmos/cosmos-sdk/codec"
 	storetypes "cosmossdk.io/store/types"
 	sdk "github.com/cosmos/cosmos-sdk/types"
@@ -217,7 +218,7 @@ func (k Keeper) RemoveValidator(ctx sdk.Context, address string) error {
 }
 
 // GenerateMintCommand generates a new mint command
-func (k Keeper) GenerateMintCommand(ctx sdk.Context, targetChain, recipient string, amount sdk.Int) (types.MintCommand, error) {
+func (k Keeper) GenerateMintCommand(ctx sdk.Context, targetChain, recipient string, amount math.Int) (types.MintCommand, error) {
 	// Generate unique command ID
 	commandID := k.generateCommandID(ctx, targetChain, recipient, amount)
 
@@ -481,7 +482,7 @@ func (k Keeper) setMintCommand(ctx sdk.Context, command types.MintCommand) {
 	store.Set(key, bz)
 }
 
-func (k Keeper) generateCommandID(ctx sdk.Context, targetChain, recipient string, amount sdk.Int) string {
+func (k Keeper) generateCommandID(ctx sdk.Context, targetChain, recipient string, amount math.Int) string {
 	// Generate deterministic command ID based on block height, target chain, recipient, and amount
 	data := fmt.Sprintf("%d-%s-%s-%s", ctx.BlockHeight(), targetChain, recipient, amount.String())
 	hash := sha256.Sum256([]byte(data))

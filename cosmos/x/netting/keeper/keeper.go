@@ -5,6 +5,7 @@ import (
 	"strconv"
 
 	"github.com/cometbft/cometbft/libs/log"
+	"cosmossdk.io/math"
 	"github.com/cosmos/cosmos-sdk/codec"
 	storetypes "cosmossdk.io/store/types"
 	sdk "github.com/cosmos/cosmos-sdk/types"
@@ -83,9 +84,9 @@ func (k Keeper) IssueCreditToken(ctx sdk.Context, token types.CreditToken) error
 }
 
 // BurnCreditToken burns credit tokens
-func (k Keeper) BurnCreditToken(ctx sdk.Context, denom string, amount sdk.Int) error {
+func (k Keeper) BurnCreditToken(ctx sdk.Context, denom string, amount math.Int) error {
 	// Validate amount
-	if amount.IsNil() || amount.LTE(sdk.ZeroInt()) {
+	if amount.IsNil() || amount.LTE(math.ZeroInt()) {
 		return nettingtypes.ErrInvalidAmount
 	}
 
@@ -118,9 +119,9 @@ func (k Keeper) BurnCreditToken(ctx sdk.Context, denom string, amount sdk.Int) e
 }
 
 // TransferCreditToken transfers credit tokens between banks
-func (k Keeper) TransferCreditToken(ctx sdk.Context, from, to, denom string, amount sdk.Int) error {
+func (k Keeper) TransferCreditToken(ctx sdk.Context, from, to, denom string, amount math.Int) error {
 	// Validate amount
-	if amount.IsNil() || amount.LTE(sdk.ZeroInt()) {
+	if amount.IsNil() || amount.LTE(math.ZeroInt()) {
 		return nettingtypes.ErrInvalidAmount
 	}
 
@@ -149,29 +150,29 @@ func (k Keeper) TransferCreditToken(ctx sdk.Context, from, to, denom string, amo
 }
 
 // GetCreditBalance returns the credit balance for a bank and denom
-func (k Keeper) GetCreditBalance(ctx sdk.Context, bank, denom string) sdk.Int {
+func (k Keeper) GetCreditBalance(ctx sdk.Context, bank, denom string) math.Int {
 	store := ctx.KVStore(k.storeKey)
 	key := nettingtypes.GetCreditBalanceKey(bank, denom)
 	
 	bz := store.Get(key)
 	if bz == nil {
-		return sdk.ZeroInt()
+		return math.ZeroInt()
 	}
 
-	var balance sdk.Int
+	var balance math.Int
 	k.cdc.MustUnmarshal(bz, &balance)
 	return balance
 }
 
 // GetAllCreditBalances returns all credit balances for a bank
-func (k Keeper) GetAllCreditBalances(ctx sdk.Context, bank string) map[string]sdk.Int {
+func (k Keeper) GetAllCreditBalances(ctx sdk.Context, bank string) map[string]math.Int {
 	store := ctx.KVStore(k.storeKey)
 	iterator := sdk.KVStorePrefixIterator(store, append(nettingtypes.CreditBalanceKeyPrefix, []byte(bank)...))
 	defer iterator.Close()
 
-	balances := make(map[string]sdk.Int)
+	balances := make(map[string]math.Int)
 	for ; iterator.Valid(); iterator.Next() {
-		var balance sdk.Int
+		var balance math.Int
 		k.cdc.MustUnmarshal(iterator.Value(), &balance)
 		
 		// Extract denom from key
@@ -187,7 +188,7 @@ func (k Keeper) GetAllCreditBalances(ctx sdk.Context, bank string) map[string]sd
 }
 
 // GetDebtPosition returns the debt position between two banks
-func (k Keeper) GetDebtPosition(ctx sdk.Context, bankA, bankB string) (sdk.Int, sdk.Int) {
+func (k Keeper) GetDebtPosition(ctx sdk.Context, bankA, bankB string) (math.Int, math.Int) {
 	// Get credit tokens that bankA holds from bankB (bankB owes bankA)
 	credAFromB := k.GetCreditBalance(ctx, bankA, "cred-"+bankB)
 	
@@ -253,8 +254,8 @@ func (k Keeper) CalculateNetting(ctx sdk.Context) ([]types.BankPair, error) {
 			credAFromB, credBFromA := k.GetDebtPosition(ctx, bankA, bankB)
 
 			// Only create pair if both banks have credits from each other
-			if credAFromB.GT(sdk.ZeroInt()) && credBFromA.GT(sdk.ZeroInt()) {
-				var netAmount sdk.Int
+			if credAFromB.GT(math.ZeroInt()) && credBFromA.GT(math.ZeroInt()) {
+				var netAmount math.Int
 				var netDebtor string
 
 				if credAFromB.GT(credBFromA) {
@@ -365,7 +366,7 @@ func (k Keeper) validateCreditToken(token types.CreditToken) error {
 	if token.HolderBank == "" {
 		return nettingtypes.ErrInvalidBankID
 	}
-	if token.Amount.IsNil() || token.Amount.LTE(sdk.ZeroInt()) {
+	if token.Amount.IsNil() || token.Amount.LTE(math.ZeroInt()) {
 		return nettingtypes.ErrInvalidAmount
 	}
 	return nil
@@ -398,22 +399,22 @@ func (k Keeper) getCreditToken(ctx sdk.Context, denom string) (types.CreditToken
 	return token, true
 }
 
-func (k Keeper) addCreditBalance(ctx sdk.Context, bank, denom string, amount sdk.Int) {
+func (k Keeper) addCreditBalance(ctx sdk.Context, bank, denom string, amount math.Int) {
 	currentBalance := k.GetCreditBalance(ctx, bank, denom)
 	newBalance := currentBalance.Add(amount)
 	k.setCreditBalance(ctx, bank, denom, newBalance)
 }
 
-func (k Keeper) subtractCreditBalance(ctx sdk.Context, bank, denom string, amount sdk.Int) {
+func (k Keeper) subtractCreditBalance(ctx sdk.Context, bank, denom string, amount math.Int) {
 	currentBalance := k.GetCreditBalance(ctx, bank, denom)
 	newBalance := currentBalance.Sub(amount)
-	if newBalance.LT(sdk.ZeroInt()) {
-		newBalance = sdk.ZeroInt()
+	if newBalance.LT(math.ZeroInt()) {
+		newBalance = math.ZeroInt()
 	}
 	k.setCreditBalance(ctx, bank, denom, newBalance)
 }
 
-func (k Keeper) setCreditBalance(ctx sdk.Context, bank, denom string, balance sdk.Int) {
+func (k Keeper) setCreditBalance(ctx sdk.Context, bank, denom string, balance math.Int) {
 	store := ctx.KVStore(k.storeKey)
 	key := nettingtypes.GetCreditBalanceKey(bank, denom)
 	bz := k.cdc.MustMarshal(&balance)

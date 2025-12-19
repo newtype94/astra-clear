@@ -1,5 +1,9 @@
 package types
 
+import (
+	"encoding/binary"
+)
+
 const (
 	// ModuleName defines the module name
 	ModuleName = "netting"
@@ -46,7 +50,9 @@ func GetCreditBalanceKey(bank, denom string) []byte {
 
 // GetNettingCycleKey returns the store key for a netting cycle
 func GetNettingCycleKey(cycleID uint64) []byte {
-	return append(NettingCycleKeyPrefix, sdk.Uint64ToBigEndian(cycleID)...)
+	bz := make([]byte, 8)
+	binary.BigEndian.PutUint64(bz, cycleID)
+	return append(NettingCycleKeyPrefix, bz...)
 }
 
 // GetDebtPositionKey returns the store key for debt position between two banks
@@ -65,5 +71,3 @@ func GetLastNettingBlockKey() []byte {
 	return LastNettingBlockKeyPrefix
 }
 
-// Import sdk for Uint64ToBigEndian
-import sdk "github.com/cosmos/cosmos-sdk/types"

@@ -1,8 +1,10 @@
 package types
 
 import (
+	"fmt"
+
+	"cosmossdk.io/math"
 	sdk "github.com/cosmos/cosmos-sdk/types"
-	sdkerrors "github.com/cosmos/cosmos-sdk/types/errors"
 	commontypes "github.com/interbank-netting/cosmos/types"
 )
 
@@ -58,44 +60,44 @@ func (msg MsgVote) GetSignBytes() []byte {
 // ValidateBasic implements the sdk.Msg interface
 func (msg MsgVote) ValidateBasic() error {
 	if msg.TxHash == "" {
-		return sdkerrors.Wrap(sdkerrors.ErrInvalidRequest, "tx hash cannot be empty")
+		return fmt.Errorf("tx hash cannot be empty")
 	}
 	
 	if msg.Validator == "" {
-		return sdkerrors.Wrap(sdkerrors.ErrInvalidRequest, "validator cannot be empty")
+		return fmt.Errorf("validator cannot be empty")
 	}
 	
 	_, err := sdk.AccAddressFromBech32(msg.Validator)
 	if err != nil {
-		return sdkerrors.Wrapf(sdkerrors.ErrInvalidAddress, "invalid validator address: %s", err)
+		return fmt.Errorf("invalid validator address: %w", err)
 	}
 	
 	if msg.EventData.TxHash != msg.TxHash {
-		return sdkerrors.Wrap(sdkerrors.ErrInvalidRequest, "event data tx hash must match message tx hash")
+		return fmt.Errorf("event data tx hash must match message tx hash")
 	}
 	
 	if msg.EventData.Sender == "" {
-		return sdkerrors.Wrap(sdkerrors.ErrInvalidRequest, "event data sender cannot be empty")
+		return fmt.Errorf("event data sender cannot be empty")
 	}
 	
 	if msg.EventData.Recipient == "" {
-		return sdkerrors.Wrap(sdkerrors.ErrInvalidRequest, "event data recipient cannot be empty")
+		return fmt.Errorf("event data recipient cannot be empty")
 	}
 	
-	if msg.EventData.Amount.IsNil() || msg.EventData.Amount.LTE(sdk.ZeroInt()) {
-		return sdkerrors.Wrap(sdkerrors.ErrInvalidRequest, "event data amount must be positive")
+	if msg.EventData.Amount.IsNil() || msg.EventData.Amount.LTE(math.ZeroInt()) {
+		return fmt.Errorf("event data amount must be positive")
 	}
 	
 	if msg.EventData.SourceChain == "" {
-		return sdkerrors.Wrap(sdkerrors.ErrInvalidRequest, "event data source chain cannot be empty")
+		return fmt.Errorf("event data source chain cannot be empty")
 	}
 	
 	if msg.EventData.DestChain == "" {
-		return sdkerrors.Wrap(sdkerrors.ErrInvalidRequest, "event data dest chain cannot be empty")
+		return fmt.Errorf("event data dest chain cannot be empty")
 	}
 	
 	if len(msg.Signature) == 0 {
-		return sdkerrors.Wrap(sdkerrors.ErrInvalidRequest, "signature cannot be empty")
+		return fmt.Errorf("signature cannot be empty")
 	}
 	
 	return nil

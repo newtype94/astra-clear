@@ -1,8 +1,10 @@
 package types
 
 import (
+	"fmt"
+
+	"cosmossdk.io/math"
 	sdk "github.com/cosmos/cosmos-sdk/types"
-	sdkerrors "github.com/cosmos/cosmos-sdk/types/errors"
 	"github.com/interbank-netting/cosmos/types"
 )
 
@@ -60,34 +62,34 @@ func (msg MsgIssueCreditToken) GetSignBytes() []byte {
 // ValidateBasic implements the sdk.Msg interface
 func (msg MsgIssueCreditToken) ValidateBasic() error {
 	if msg.Issuer == "" {
-		return sdkerrors.Wrap(sdkerrors.ErrInvalidRequest, "issuer cannot be empty")
+		return fmt.Errorf("issuer cannot be empty")
 	}
-	
+
 	_, err := sdk.AccAddressFromBech32(msg.Issuer)
 	if err != nil {
-		return sdkerrors.Wrapf(sdkerrors.ErrInvalidAddress, "invalid issuer address: %s", err)
+		return fmt.Errorf("invalid issuer address: %w", err)
 	}
-	
+
 	if msg.CreditToken.Denom == "" {
-		return sdkerrors.Wrap(sdkerrors.ErrInvalidRequest, "credit token denom cannot be empty")
+		return fmt.Errorf("credit token denom cannot be empty")
 	}
-	
+
 	if msg.CreditToken.IssuerBank == "" {
-		return sdkerrors.Wrap(sdkerrors.ErrInvalidRequest, "issuer bank cannot be empty")
+		return fmt.Errorf("issuer bank cannot be empty")
 	}
-	
+
 	if msg.CreditToken.HolderBank == "" {
-		return sdkerrors.Wrap(sdkerrors.ErrInvalidRequest, "holder bank cannot be empty")
+		return fmt.Errorf("holder bank cannot be empty")
 	}
-	
-	if msg.CreditToken.Amount.IsNil() || msg.CreditToken.Amount.LTE(sdk.ZeroInt()) {
-		return sdkerrors.Wrap(sdkerrors.ErrInvalidRequest, "credit token amount must be positive")
+
+	if msg.CreditToken.Amount.IsNil() || msg.CreditToken.Amount.LTE(math.ZeroInt()) {
+		return fmt.Errorf("credit token amount must be positive")
 	}
-	
+
 	if msg.CreditToken.OriginTx == "" {
-		return sdkerrors.Wrap(sdkerrors.ErrInvalidRequest, "origin transaction cannot be empty")
+		return fmt.Errorf("origin transaction cannot be empty")
 	}
-	
+
 	return nil
 }
 
@@ -95,11 +97,11 @@ func (msg MsgIssueCreditToken) ValidateBasic() error {
 type MsgBurnCreditToken struct {
 	Burner string  `json:"burner"`
 	Denom  string  `json:"denom"`
-	Amount sdk.Int `json:"amount"`
+	Amount math.Int `json:"amount"`
 }
 
 // NewMsgBurnCreditToken creates a new MsgBurnCreditToken instance
-func NewMsgBurnCreditToken(burner, denom string, amount sdk.Int) *MsgBurnCreditToken {
+func NewMsgBurnCreditToken(burner, denom string, amount math.Int) *MsgBurnCreditToken {
 	return &MsgBurnCreditToken{
 		Burner: burner,
 		Denom:  denom,
@@ -135,22 +137,22 @@ func (msg MsgBurnCreditToken) GetSignBytes() []byte {
 // ValidateBasic implements the sdk.Msg interface
 func (msg MsgBurnCreditToken) ValidateBasic() error {
 	if msg.Burner == "" {
-		return sdkerrors.Wrap(sdkerrors.ErrInvalidRequest, "burner cannot be empty")
+		return fmt.Errorf("burner cannot be empty")
 	}
-	
+
 	_, err := sdk.AccAddressFromBech32(msg.Burner)
 	if err != nil {
-		return sdkerrors.Wrapf(sdkerrors.ErrInvalidAddress, "invalid burner address: %s", err)
+		return fmt.Errorf("invalid burner address: %w", err)
 	}
-	
+
 	if msg.Denom == "" {
-		return sdkerrors.Wrap(sdkerrors.ErrInvalidRequest, "denom cannot be empty")
+		return fmt.Errorf("denom cannot be empty")
 	}
-	
-	if msg.Amount.IsNil() || msg.Amount.LTE(sdk.ZeroInt()) {
-		return sdkerrors.Wrap(sdkerrors.ErrInvalidRequest, "amount must be positive")
+
+	if msg.Amount.IsNil() || msg.Amount.LTE(math.ZeroInt()) {
+		return fmt.Errorf("amount must be positive")
 	}
-	
+
 	return nil
 }
 
@@ -194,13 +196,13 @@ func (msg MsgTriggerNetting) GetSignBytes() []byte {
 // ValidateBasic implements the sdk.Msg interface
 func (msg MsgTriggerNetting) ValidateBasic() error {
 	if msg.Triggerer == "" {
-		return sdkerrors.Wrap(sdkerrors.ErrInvalidRequest, "triggerer cannot be empty")
+		return fmt.Errorf("triggerer cannot be empty")
 	}
-	
+
 	_, err := sdk.AccAddressFromBech32(msg.Triggerer)
 	if err != nil {
-		return sdkerrors.Wrapf(sdkerrors.ErrInvalidAddress, "invalid triggerer address: %s", err)
+		return fmt.Errorf("invalid triggerer address: %w", err)
 	}
-	
+
 	return nil
 }

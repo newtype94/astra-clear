@@ -398,17 +398,109 @@ func (k Keeper) getConsensusThreshold(ctx sdk.Context) int {
 	// Get all bonded validators
 	validators := k.stakingKeeper.GetBondedValidatorsByPower(ctx)
 	totalValidators := len(validators)
-	
+
 	// Calculate 2/3 threshold
 	threshold := (totalValidators * 2) / 3
 	if (totalValidators*2)%3 != 0 {
 		threshold++ // Round up for 2/3+ majority
 	}
-	
+
 	// Minimum threshold of 1
 	if threshold < 1 {
 		threshold = 1
 	}
-	
+
 	return threshold
+}
+
+// RejectTransfer rejects a transfer due to insufficient votes or timeout
+// Requirement 3.4: WHEN 충분하지 않은 투표가 수신되면 THEN 시스템은 이체를 거부하고 현재 상태를 유지해야 합니다
+func (k Keeper) RejectTransfer(ctx sdk.Context, txHash string, reason string) error {
+	voteStatus, found := k.GetVoteStatus(ctx, txHash)
+	if !found {
+		return types.ErrTransferNotFound
+	}
+
+	if voteStatus.Confirmed {
+		return types.ErrTransferAlreadyConfirmed
+	}
+
+	// Mark as rejected (we don't modify the vote status, just emit an event)
+	// The transfer remains in pending state and won't be processed
+
+	// Emit transfer rejected event
+	ctx.EventManager().EmitEvent(
+		sdk.NewEvent(
+			types.EventTypeTransferRejected,
+			sdk.NewAttribute(types.AttributeKeyTxHash, txHash),
+			sdk.NewAttribute(types.AttributeKeyVoteCount, fmt.Sprintf("%d", voteStatus.VoteCount)),
+			sdk.NewAttribute(types.AttributeKeyThreshold, fmt.Sprintf("%d", voteStatus.Threshold)),
+			sdk.NewAttribute(types.AttributeKeyReason, reason),
+		),
+	)
+
+	k.Logger(ctx).Info("transfer rejected",
+		"tx_hash", txHash,
+		"vote_count", voteStatus.VoteCount,
+		"threshold", voteStatus.Threshold,
+		"reason", reason,
+	)
+
+	return nil
+}
+
+// CheckConsensusTimeout checks if a transfer has timed out without reaching consensus
+func (k Keeper) CheckConsensusTimeout(ctx sdk.Context, txHash string, timeoutBlocks int64) (bool, error) {
+	voteStatus, found := k.GetVoteStatus(ctx, txHash)
+	if !found {
+		return false, types.ErrTransferNotFound
+	}
+
+	if voteStatus.Confirmed {
+		return false, nil // Already confirmed, no timeout
+	}
+
+	// Calculate time elapsed since vote creation
+	currentTime := ctx.BlockTime().Unix()
+	elapsedTime := currentTime - voteStatus.CreatedAt
+
+	// Check if timeout period has elapsed (assuming ~6 seconds per block)
+	timeoutSeconds := timeoutBlocks * 6
+	if elapsedTime >= timeoutSeconds {
+		return true, nil
+	}
+
+	return false, nil
+}
+
+// GetConfirmedTransfer retrieves a confirmed transfer by txHash
+func (k Keeper) GetConfirmedTransfer(ctx sdk.Context, txHash string) (commontypes.TransferEvent, bool) {
+	store := ctx.KVStore(k.storeKey)
+	key := types.GetConfirmedTransferKey(txHash)
+
+	bz := store.Get(key)
+	if bz == nil {
+		return commontypes.TransferEvent{}, false
+	}
+
+	var transferEvent commontypes.TransferEvent
+	k.cdc.MustUnmarshal(bz, &transferEvent)
+	return transferEvent, true
+}
+
+// GetAllVoteStatuses retrieves all vote statuses (for queries and auditing)
+func (k Keeper) GetAllVoteStatuses(ctx sdk.Context) []commontypes.VoteStatus {
+	store := ctx.KVStore(k.storeKey)
+
+	var statuses []commontypes.VoteStatus
+	iterator := sdk.KVStorePrefixIterator(store, types.VoteStatusKeyPrefix)
+	defer iterator.Close()
+
+	for ; iterator.Valid(); iterator.Next() {
+		var voteStatus commontypes.VoteStatus
+		k.cdc.MustUnmarshal(iterator.Value(), &voteStatus)
+		statuses = append(statuses, voteStatus)
+	}
+
+	return statuses
 }
