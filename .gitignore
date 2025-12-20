@@ -1,3 +1,11 @@
 node_modules
 package-lock.json
 relayer/logs
+
+# Hardhat
+contracts/cache
+contracts/artifacts
+contracts/typechain-types
+contracts/coverage
+contracts/coverage.json
+contracts/.openzeppelin
