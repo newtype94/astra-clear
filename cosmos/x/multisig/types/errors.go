@@ -21,4 +21,5 @@ var (
 	ErrUnauthorized           = errors.Register(ModuleName, 13, "unauthorized operation")
 	ErrInvalidECDSASignature  = errors.Register(ModuleName, 14, "invalid ECDSA signature")
 	ErrSignatureVerification  = errors.Register(ModuleName, 15, "signature verification failed")
+	ErrInvalidCommandStatus   = errors.Register(ModuleName, 16, "invalid command status")
 )

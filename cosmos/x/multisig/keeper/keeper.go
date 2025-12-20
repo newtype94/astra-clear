@@ -494,3 +494,112 @@ func (k Keeper) hashCommand(command types.MintCommand) []byte {
 	hash := sha256.Sum256([]byte(data))
 	return hash[:]
 }
+
+// GetAllPendingCommands returns all commands awaiting signatures
+func (k Keeper) GetAllPendingCommands(ctx sdk.Context) []types.MintCommand {
+	return k.getCommandsByStatus(ctx, int32(types.CommandStatusPending))
+}
+
+// GetSignedCommands returns all commands that have collected enough signatures
+func (k Keeper) GetSignedCommands(ctx sdk.Context) []types.MintCommand {
+	return k.getCommandsByStatus(ctx, int32(types.CommandStatusSigned))
+}
+
+// GetAllCommands returns all mint commands in the store
+func (k Keeper) GetAllCommands(ctx sdk.Context) []types.MintCommand {
+	store := ctx.KVStore(k.storeKey)
+	iterator := storetypes.KVStorePrefixIterator(store, multisigtypes.MintCommandKeyPrefix)
+	defer iterator.Close()
+
+	commands := make([]types.MintCommand, 0)
+	for ; iterator.Valid(); iterator.Next() {
+		var command types.MintCommand
+		k.cdc.MustUnmarshal(iterator.Value(), &command)
+		commands = append(commands, command)
+	}
+	return commands
+}
+
+// getCommandsByStatus returns commands filtered by status
+func (k Keeper) getCommandsByStatus(ctx sdk.Context, status int32) []types.MintCommand {
+	allCommands := k.GetAllCommands(ctx)
+	filtered := make([]types.MintCommand, 0)
+	for _, cmd := range allCommands {
+		if cmd.Status == status {
+			filtered = append(filtered, cmd)
+		}
+	}
+	return filtered
+}
+
+// ProcessPendingCommands processes all pending commands and collects signatures
+// This is called in EndBlock to automatically collect signatures from validators
+// Requirement 5.2: Collect ECDSA signatures from active validators
+func (k Keeper) ProcessPendingCommands(ctx sdk.Context) error {
+	pendingCommands := k.GetAllPendingCommands(ctx)
+	validatorSet := k.GetValidatorSet(ctx)
+
+	for _, command := range pendingCommands {
+		// Each active validator signs the pending command
+		for _, validator := range validatorSet.Validators {
+			if !validator.Active {
+				continue
+			}
+
+			// Check if validator already signed
+			alreadySigned := false
+			for _, sig := range command.Signatures {
+				if sig.Validator == validator.Address {
+					alreadySigned = true
+					break
+				}
+			}
+
+			if alreadySigned {
+				continue
+			}
+
+			// Sign the command
+			commandHash := k.hashCommand(command)
+			signature, err := k.SignData(ctx, validator.Address, commandHash)
+			if err != nil {
+				// Log error but continue with other validators
+				k.Logger(ctx).Error("failed to sign command", "command_id", command.CommandID, "validator", validator.Address, "error", err)
+				continue
+			}
+
+			// Add signature to command
+			if err := k.AddSignatureToCommand(ctx, command.CommandID, signature); err != nil {
+				k.Logger(ctx).Error("failed to add signature", "command_id", command.CommandID, "validator", validator.Address, "error", err)
+				continue
+			}
+		}
+	}
+
+	return nil
+}
+
+// MarkCommandExecuted marks a command as executed after Relayer confirms on-chain execution
+func (k Keeper) MarkCommandExecuted(ctx sdk.Context, commandID string) error {
+	command, found := k.GetCommand(ctx, commandID)
+	if !found {
+		return multisigtypes.ErrCommandNotFound
+	}
+
+	if command.Status != int32(types.CommandStatusSigned) {
+		return multisigtypes.ErrInvalidCommandStatus
+	}
+
+	command.Status = int32(types.CommandStatusExecuted)
+	k.setMintCommand(ctx, command)
+
+	// Emit command executed event
+	ctx.EventManager().EmitEvent(
+		sdk.NewEvent(
+			multisigtypes.EventTypeCommandExecuted,
+			sdk.NewAttribute(multisigtypes.AttributeKeyCommandID, commandID),
+		),
+	)
+
+	return nil
+}

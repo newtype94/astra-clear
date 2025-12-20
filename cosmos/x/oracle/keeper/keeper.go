@@ -23,9 +23,10 @@ type Keeper struct {
 	memKey     storetypes.StoreKey
 	paramstore paramtypes.Subspace
 
-	bankKeeper    types.BankKeeper
-	stakingKeeper types.StakingKeeper
-	nettingKeeper types.NettingKeeper
+	bankKeeper     types.BankKeeper
+	stakingKeeper  types.StakingKeeper
+	nettingKeeper  types.NettingKeeper
+	multisigKeeper types.MultisigKeeper
 }
 
 // NewKeeper creates a new oracle Keeper instance
@@ -50,6 +51,11 @@ func NewKeeper(
 // SetNettingKeeper sets the netting keeper (to avoid circular dependency)
 func (k *Keeper) SetNettingKeeper(nettingKeeper types.NettingKeeper) {
 	k.nettingKeeper = nettingKeeper
+}
+
+// SetMultisigKeeper sets the multisig keeper (to avoid circular dependency)
+func (k *Keeper) SetMultisigKeeper(multisigKeeper types.MultisigKeeper) {
+	k.multisigKeeper = multisigKeeper
 }
 
 // Logger returns a module-specific logger.
@@ -190,6 +196,20 @@ func (k Keeper) ConfirmTransfer(ctx sdk.Context, txHash string) error {
 
 		if err := k.nettingKeeper.IssueCreditToken(ctx, creditToken); err != nil {
 			return fmt.Errorf("failed to issue credit token: %w", err)
+		}
+	}
+
+	// Generate mint command through multisig keeper (Requirement 5.1)
+	// This creates a command for minting tokens on the destination chain
+	if k.multisigKeeper != nil {
+		_, err := k.multisigKeeper.GenerateMintCommand(
+			ctx,
+			eventData.DestChain,  // Target chain where tokens will be minted
+			eventData.Recipient,  // Recipient address on the destination chain
+			eventData.Amount,     // Amount to mint
+		)
+		if err != nil {
+			return fmt.Errorf("failed to generate mint command: %w", err)
 		}
 	}
 

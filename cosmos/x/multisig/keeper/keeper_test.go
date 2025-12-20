@@ -492,3 +492,344 @@ func (m *MockStakingKeeper) GetAllValidators(ctx context.Context) ([]stakingtype
 func (m *MockStakingKeeper) GetBondedValidatorsByPower(ctx context.Context) ([]stakingtypes.Validator, error) {
 	return []stakingtypes.Validator{}, nil
 }
+
+// **Feature: interbank-netting-engine, Property 8: 다중 서명 임계값**
+// **검증: 요구사항 5.3 - 검증자의 최소 3분의 2로부터 서명을 요구**
+func TestProperty_MultisigThreshold_TwoThirdsMajority(t *testing.T) {
+	properties := gopter.NewProperties(gopter.DefaultTestParameters())
+
+	properties.Property("command requires 2/3 validator signatures to be marked as signed", prop.ForAll(
+		func(validatorCount int) bool {
+			// Need at least 1 validator
+			if validatorCount <= 0 || validatorCount > 10 {
+				return true
+			}
+
+			// Setup test environment
+			ctx, multisigKeeper := setupMultisigTestEnvironment(t)
+
+			// Generate validators
+			validators := generateValidators(validatorCount)
+
+			// Update validator set
+			err := multisigKeeper.UpdateValidatorSet(ctx, validators)
+			if err != nil {
+				return false
+			}
+
+			// Verify threshold calculation (2/3 rounded up)
+			validatorSet := multisigKeeper.GetValidatorSet(ctx)
+			expectedThreshold := (validatorCount * 2) / 3
+			if (validatorCount*2)%3 != 0 {
+				expectedThreshold++
+			}
+			if expectedThreshold < 1 {
+				expectedThreshold = 1
+			}
+
+			if int(validatorSet.Threshold) != expectedThreshold {
+				return false // Threshold should be 2/3 majority
+			}
+
+			// Generate mint command
+			command, err := multisigKeeper.GenerateMintCommand(ctx, "bank-a", "recipient1", math.NewInt(1000))
+			if err != nil {
+				return false
+			}
+
+			// Add signatures one by one until threshold
+			for i := 0; i < len(validators); i++ {
+				validator := validators[i]
+				commandData := []byte(command.CommandID)
+				signature, err := multisigKeeper.SignData(ctx, validator.Address, commandData)
+				if err != nil {
+					return false
+				}
+
+				err = multisigKeeper.AddSignatureToCommand(ctx, command.CommandID, signature)
+				if err != nil {
+					return false
+				}
+
+				// Check command status after adding signature
+				updatedCommand, found := multisigKeeper.GetCommand(ctx, command.CommandID)
+				if !found {
+					return false
+				}
+
+				// Before threshold: should be pending
+				// At or after threshold: should be signed
+				signatureCount := i + 1
+				if signatureCount >= expectedThreshold {
+					// Should be marked as signed
+					if updatedCommand.Status != int32(types.CommandStatusSigned) {
+						return false // Command should be signed when threshold reached
+					}
+				} else {
+					// Should still be pending
+					if updatedCommand.Status != int32(types.CommandStatusPending) {
+						return false // Command should be pending before threshold
+					}
+				}
+			}
+
+			return true
+		},
+		gen.IntRange(1, 10), // Test with 1-10 validators
+	))
+
+	properties.TestingRun(t)
+}
+
+// **Feature: interbank-netting-engine, Property 8: 다중 서명 임계값**
+// **검증: 요구사항 5.3 - 서명이 부족하면 명령 거부**
+func TestProperty_MultisigThreshold_InsufficientSignaturesNotConfirmed(t *testing.T) {
+	properties := gopter.NewProperties(gopter.DefaultTestParameters())
+
+	properties.Property("command with insufficient signatures remains pending", prop.ForAll(
+		func(validatorCount int) bool {
+			// Need at least 3 validators to have meaningful test
+			if validatorCount < 3 || validatorCount > 10 {
+				return true
+			}
+
+			// Setup test environment
+			ctx, multisigKeeper := setupMultisigTestEnvironment(t)
+
+			// Generate validators
+			validators := generateValidators(validatorCount)
+
+			// Update validator set
+			err := multisigKeeper.UpdateValidatorSet(ctx, validators)
+			if err != nil {
+				return false
+			}
+
+			validatorSet := multisigKeeper.GetValidatorSet(ctx)
+			threshold := int(validatorSet.Threshold)
+
+			// Generate mint command
+			command, err := multisigKeeper.GenerateMintCommand(ctx, "bank-a", "recipient1", math.NewInt(1000))
+			if err != nil {
+				return false
+			}
+
+			// Add signatures but stay below threshold
+			signaturesNeeded := threshold - 1
+			if signaturesNeeded <= 0 {
+				signaturesNeeded = 0
+			}
+
+			for i := 0; i < signaturesNeeded; i++ {
+				validator := validators[i]
+				commandData := []byte(command.CommandID)
+				signature, err := multisigKeeper.SignData(ctx, validator.Address, commandData)
+				if err != nil {
+					return false
+				}
+
+				err = multisigKeeper.AddSignatureToCommand(ctx, command.CommandID, signature)
+				if err != nil {
+					return false
+				}
+			}
+
+			// Command should still be pending (not enough signatures)
+			updatedCommand, found := multisigKeeper.GetCommand(ctx, command.CommandID)
+			if !found {
+				return false
+			}
+
+			if updatedCommand.Status != int32(types.CommandStatusPending) {
+				return false // Command should remain pending with insufficient signatures
+			}
+
+			return true
+		},
+		gen.IntRange(3, 10), // Test with 3-10 validators
+	))
+
+	properties.TestingRun(t)
+}
+
+// **Feature: interbank-netting-engine, Property 9: 발행 명령 수집**
+// **검증: 요구사항 5.2 - 활성 검증자들로부터 ECDSA 서명을 수집**
+func TestProperty_ProcessPendingCommands_CollectsSignatures(t *testing.T) {
+	properties := gopter.NewProperties(gopter.DefaultTestParameters())
+
+	properties.Property("ProcessPendingCommands collects signatures from active validators", prop.ForAll(
+		func(validatorCount int) bool {
+			// Need at least 1 validator
+			if validatorCount <= 0 || validatorCount > 5 {
+				return true
+			}
+
+			// Setup test environment
+			ctx, multisigKeeper := setupMultisigTestEnvironment(t)
+
+			// Generate validators (all active)
+			validators := generateValidators(validatorCount)
+
+			// Update validator set
+			err := multisigKeeper.UpdateValidatorSet(ctx, validators)
+			if err != nil {
+				return false
+			}
+
+			// Generate mint command
+			command, err := multisigKeeper.GenerateMintCommand(ctx, "bank-a", "recipient1", math.NewInt(1000))
+			if err != nil {
+				return false
+			}
+
+			// Verify command is pending
+			pendingCommands := multisigKeeper.GetAllPendingCommands(ctx)
+			if len(pendingCommands) != 1 {
+				return false // Should have one pending command
+			}
+
+			// Process pending commands (simulates EndBlock)
+			err = multisigKeeper.ProcessPendingCommands(ctx)
+			if err != nil {
+				return false
+			}
+
+			// Check that signatures were collected
+			updatedCommand, found := multisigKeeper.GetCommand(ctx, command.CommandID)
+			if !found {
+				return false
+			}
+
+			// All active validators should have signed
+			if len(updatedCommand.Signatures) != validatorCount {
+				return false // All validators should have signed
+			}
+
+			// Command should be signed if threshold reached
+			validatorSet := multisigKeeper.GetValidatorSet(ctx)
+			if validatorCount >= int(validatorSet.Threshold) {
+				if updatedCommand.Status != int32(types.CommandStatusSigned) {
+					return false // Command should be signed
+				}
+			}
+
+			return true
+		},
+		gen.IntRange(1, 5), // Test with 1-5 validators
+	))
+
+	properties.TestingRun(t)
+}
+
+// **Feature: interbank-netting-engine, Property 9: 발행 명령 수집**
+// **검증: 비활성 검증자는 서명에서 제외**
+func TestProperty_ProcessPendingCommands_SkipsInactiveValidators(t *testing.T) {
+	ctx, multisigKeeper := setupMultisigTestEnvironment(t)
+
+	// Generate 5 validators, 2 inactive
+	validators := generateValidators(5)
+	validators[2].Active = false
+	validators[4].Active = false
+
+	// Update validator set
+	err := multisigKeeper.UpdateValidatorSet(ctx, validators)
+	require.NoError(t, err)
+
+	// Generate mint command
+	command, err := multisigKeeper.GenerateMintCommand(ctx, "bank-a", "recipient1", math.NewInt(1000))
+	require.NoError(t, err)
+
+	// Process pending commands
+	err = multisigKeeper.ProcessPendingCommands(ctx)
+	require.NoError(t, err)
+
+	// Check signatures - only active validators should sign
+	updatedCommand, found := multisigKeeper.GetCommand(ctx, command.CommandID)
+	require.True(t, found)
+
+	// Should have 3 signatures (from active validators only)
+	require.Equal(t, 3, len(updatedCommand.Signatures))
+
+	// Verify inactive validators didn't sign
+	for _, sig := range updatedCommand.Signatures {
+		require.NotEqual(t, validators[2].Address, sig.Validator)
+		require.NotEqual(t, validators[4].Address, sig.Validator)
+	}
+}
+
+// **Feature: interbank-netting-engine, Property 10: 명령 상태 전환**
+// **검증: 요구사항 5.1 - 발행 명령 생성 및 상태 전환**
+func TestProperty_CommandStatusTransitions(t *testing.T) {
+	ctx, multisigKeeper := setupMultisigTestEnvironment(t)
+
+	// Setup validators
+	validators := generateValidators(3)
+	err := multisigKeeper.UpdateValidatorSet(ctx, validators)
+	require.NoError(t, err)
+
+	// 1. Create command - should be Pending
+	command, err := multisigKeeper.GenerateMintCommand(ctx, "bank-a", "recipient1", math.NewInt(1000))
+	require.NoError(t, err)
+	require.Equal(t, int32(types.CommandStatusPending), command.Status)
+
+	// 2. Process to collect signatures - should become Signed (threshold = 2)
+	err = multisigKeeper.ProcessPendingCommands(ctx)
+	require.NoError(t, err)
+
+	updatedCommand, found := multisigKeeper.GetCommand(ctx, command.CommandID)
+	require.True(t, found)
+	require.Equal(t, int32(types.CommandStatusSigned), updatedCommand.Status)
+
+	// 3. Mark as executed - should become Executed
+	err = multisigKeeper.MarkCommandExecuted(ctx, command.CommandID)
+	require.NoError(t, err)
+
+	finalCommand, found := multisigKeeper.GetCommand(ctx, command.CommandID)
+	require.True(t, found)
+	require.Equal(t, int32(types.CommandStatusExecuted), finalCommand.Status)
+}
+
+// **Unit Test: 명령 쿼리 메서드 검증**
+func TestGetCommandsByStatus(t *testing.T) {
+	ctx, multisigKeeper := setupMultisigTestEnvironment(t)
+
+	// Setup validators
+	validators := generateValidators(3)
+	err := multisigKeeper.UpdateValidatorSet(ctx, validators)
+	require.NoError(t, err)
+
+	// Create multiple commands
+	cmd1, _ := multisigKeeper.GenerateMintCommand(ctx, "bank-a", "recipient1", math.NewInt(1000))
+	cmd2, _ := multisigKeeper.GenerateMintCommand(ctx, "bank-b", "recipient2", math.NewInt(2000))
+	cmd3, _ := multisigKeeper.GenerateMintCommand(ctx, "bank-c", "recipient3", math.NewInt(3000))
+
+	// Initially all should be pending
+	pendingCommands := multisigKeeper.GetAllPendingCommands(ctx)
+	require.Equal(t, 3, len(pendingCommands))
+
+	signedCommands := multisigKeeper.GetSignedCommands(ctx)
+	require.Equal(t, 0, len(signedCommands))
+
+	// Process first command only - add enough signatures
+	for _, v := range validators {
+		commandData := []byte(cmd1.CommandID)
+		signature, _ := multisigKeeper.SignData(ctx, v.Address, commandData)
+		_ = multisigKeeper.AddSignatureToCommand(ctx, cmd1.CommandID, signature)
+	}
+
+	// Now should have 2 pending and 1 signed
+	pendingCommands = multisigKeeper.GetAllPendingCommands(ctx)
+	require.Equal(t, 2, len(pendingCommands))
+
+	signedCommands = multisigKeeper.GetSignedCommands(ctx)
+	require.Equal(t, 1, len(signedCommands))
+	require.Equal(t, cmd1.CommandID, signedCommands[0].CommandID)
+
+	// Verify pending commands are cmd2 and cmd3
+	pendingIDs := make(map[string]bool)
+	for _, cmd := range pendingCommands {
+		pendingIDs[cmd.CommandID] = true
+	}
+	require.True(t, pendingIDs[cmd2.CommandID])
+	require.True(t, pendingIDs[cmd3.CommandID])
+}

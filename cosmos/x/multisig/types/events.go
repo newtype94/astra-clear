@@ -10,6 +10,7 @@ const (
 	EventTypeValidatorRemoved     = "validator_removed"
 	EventTypeSignatureVerified    = "signature_verified"
 	EventTypeSignatureRejected    = "signature_rejected"
+	EventTypeCommandExecuted      = "command_executed"
 )
 
 // Multisig module event attribute keys

@@ -142,6 +142,8 @@ func (am AppModule) BeginBlock(ctx context.Context) error {
 }
 
 // EndBlock executes all ABCI EndBlock logic respective to the multisig module.
+// Requirement 5.2: Collect ECDSA signatures from active validators
 func (am AppModule) EndBlock(ctx context.Context) error {
-	return nil
+	sdkCtx := sdk.UnwrapSDKContext(ctx)
+	return am.keeper.ProcessPendingCommands(sdkCtx)
 }

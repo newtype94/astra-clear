@@ -3,6 +3,7 @@ package types
 import (
 	"context"
 
+	"cosmossdk.io/math"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	stakingtypes "github.com/cosmos/cosmos-sdk/x/staking/types"
 	commontypes "github.com/interbank-netting/cosmos/types"
@@ -30,4 +31,9 @@ type StakingKeeper interface {
 // NettingKeeper defines the expected netting keeper interface
 type NettingKeeper interface {
 	IssueCreditToken(ctx sdk.Context, creditToken commontypes.CreditToken) error
+}
+
+// MultisigKeeper defines the expected multisig keeper interface
+type MultisigKeeper interface {
+	GenerateMintCommand(ctx sdk.Context, targetChain, recipient string, amount math.Int) (commontypes.MintCommand, error)
 }
