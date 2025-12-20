@@ -15,6 +15,17 @@ type GenesisState struct {
 	Params             Params                   `json:"params"`
 }
 
+// ProtoMessage implements proto.Message
+func (gs *GenesisState) ProtoMessage() {}
+
+// Reset implements proto.Message
+func (gs *GenesisState) Reset() { *gs = GenesisState{} }
+
+// String implements proto.Message
+func (gs *GenesisState) String() string {
+	return fmt.Sprintf("GenesisState{VoteStatuses: %d, ConfirmedTransfers: %d}", len(gs.VoteStatuses), len(gs.ConfirmedTransfers))
+}
+
 // Params defines the parameters for the oracle module.
 type Params struct {
 	VotingPeriod      int64 `json:"voting_period"`       // Voting period in seconds

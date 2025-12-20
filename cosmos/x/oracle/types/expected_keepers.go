@@ -8,6 +8,13 @@ import (
 	commontypes "github.com/interbank-netting/cosmos/types"
 )
 
+// AccountKeeper defines the expected account keeper interface
+type AccountKeeper interface {
+	GetAccount(ctx context.Context, addr sdk.AccAddress) sdk.AccountI
+	SetAccount(ctx context.Context, acc sdk.AccountI)
+	NewAccountWithAddress(ctx context.Context, addr sdk.AccAddress) sdk.AccountI
+}
+
 // BankKeeper defines the expected bank keeper interface
 type BankKeeper interface {
 	SendCoins(ctx context.Context, fromAddr sdk.AccAddress, toAddr sdk.AccAddress, amt sdk.Coins) error

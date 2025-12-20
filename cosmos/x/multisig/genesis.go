@@ -16,6 +16,17 @@ type GenesisState struct {
 	Params       Params                 `json:"params"`
 }
 
+// ProtoMessage implements proto.Message
+func (gs *GenesisState) ProtoMessage() {}
+
+// Reset implements proto.Message
+func (gs *GenesisState) Reset() { *gs = GenesisState{} }
+
+// String implements proto.Message
+func (gs *GenesisState) String() string {
+	return fmt.Sprintf("GenesisState{Validators: %d, MintCommands: %d}", len(gs.ValidatorSet.Validators), len(gs.MintCommands))
+}
+
 // Params defines the parameters for the multisig module.
 type Params struct {
 	SigningTimeout    int64 `json:"signing_timeout"`     // Signing timeout in seconds

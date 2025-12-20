@@ -17,6 +17,17 @@ type GenesisState struct {
 	Params          Params                 `json:"params"`
 }
 
+// ProtoMessage implements proto.Message
+func (gs *GenesisState) ProtoMessage() {}
+
+// Reset implements proto.Message
+func (gs *GenesisState) Reset() { *gs = GenesisState{} }
+
+// String implements proto.Message
+func (gs *GenesisState) String() string {
+	return fmt.Sprintf("GenesisState{CreditTokens: %d, NettingCycles: %d}", len(gs.CreditTokens), len(gs.NettingCycles))
+}
+
 // Params defines the parameters for the netting module.
 type Params struct {
 	NettingInterval   int64 `json:"netting_interval"`    // Netting interval in blocks
