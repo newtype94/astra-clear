@@ -397,7 +397,7 @@ func (k Keeper) setConfirmedTransfer(ctx sdk.Context, txHash string, eventData c
 	store.Set(key, bz)
 }
 
-func (k Keeper) getConsensusThreshold(ctx sdk.Context) int {
+func (k Keeper) getConsensusThreshold(ctx sdk.Context) int32 {
 	// Get all bonded validators
 	validators, err := k.stakingKeeper.GetBondedValidatorsByPower(ctx)
 	if err != nil {
@@ -416,7 +416,7 @@ func (k Keeper) getConsensusThreshold(ctx sdk.Context) int {
 		threshold = 1
 	}
 
-	return threshold
+	return int32(threshold)
 }
 
 // RejectTransfer rejects a transfer due to insufficient votes or timeout
@@ -498,7 +498,7 @@ func (k Keeper) GetConfirmedTransfer(ctx sdk.Context, txHash string) (commontype
 func (k Keeper) GetAllVoteStatuses(ctx sdk.Context) []commontypes.VoteStatus {
 	store := ctx.KVStore(k.storeKey)
 
-	var statuses []commontypes.VoteStatus
+	statuses := make([]commontypes.VoteStatus, 0)
 	iterator := storetypes.KVStorePrefixIterator(store, types.VoteStatusKeyPrefix)
 	defer iterator.Close()
 

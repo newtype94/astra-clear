@@ -8,15 +8,15 @@ import (
 
 // TransferEvent represents a cross-chain transfer event from Besu networks
 type TransferEvent struct {
-	TxHash      string    `json:"tx_hash"`
-	Sender      string    `json:"sender"`
-	Recipient   string    `json:"recipient"`
-	Amount      math.Int  `json:"amount"`
-	Nonce       uint64    `json:"nonce"`
-	SourceChain string    `json:"source_chain"`
-	DestChain   string    `json:"dest_chain"`
-	BlockHeight uint64    `json:"block_height"`
-	Timestamp   int64     `json:"timestamp"`
+	TxHash      string   `protobuf:"bytes,1,opt,name=tx_hash,json=txHash,proto3" json:"tx_hash"`
+	Sender      string   `protobuf:"bytes,2,opt,name=sender,proto3" json:"sender"`
+	Recipient   string   `protobuf:"bytes,3,opt,name=recipient,proto3" json:"recipient"`
+	Amount      math.Int `protobuf:"bytes,4,opt,name=amount,proto3,customtype=cosmossdk.io/math.Int" json:"amount"`
+	Nonce       uint64   `protobuf:"varint,5,opt,name=nonce,proto3" json:"nonce"`
+	SourceChain string   `protobuf:"bytes,6,opt,name=source_chain,json=sourceChain,proto3" json:"source_chain"`
+	DestChain   string   `protobuf:"bytes,7,opt,name=dest_chain,json=destChain,proto3" json:"dest_chain"`
+	BlockHeight uint64   `protobuf:"varint,8,opt,name=block_height,json=blockHeight,proto3" json:"block_height"`
+	Timestamp   int64    `protobuf:"varint,9,opt,name=timestamp,proto3" json:"timestamp"`
 }
 
 func (t *TransferEvent) ProtoMessage()  {}
@@ -25,11 +25,11 @@ func (t *TransferEvent) String() string { return fmt.Sprintf("TransferEvent{TxHa
 
 // Vote represents a validator's vote on a transfer event
 type Vote struct {
-	TxHash      string        `json:"tx_hash"`
-	Validator   string        `json:"validator"`
-	EventData   TransferEvent `json:"event_data"`
-	Signature   []byte        `json:"signature"`
-	VoteTime    int64         `json:"vote_time"`
+	TxHash    string        `protobuf:"bytes,1,opt,name=tx_hash,json=txHash,proto3" json:"tx_hash"`
+	Validator string        `protobuf:"bytes,2,opt,name=validator,proto3" json:"validator"`
+	EventData TransferEvent `protobuf:"bytes,3,opt,name=event_data,json=eventData,proto3" json:"event_data"`
+	Signature []byte        `protobuf:"bytes,4,opt,name=signature,proto3" json:"signature"`
+	VoteTime  int64         `protobuf:"varint,5,opt,name=vote_time,json=voteTime,proto3" json:"vote_time"`
 }
 
 func (v *Vote) ProtoMessage()  {}
@@ -38,56 +38,62 @@ func (v *Vote) String() string { return fmt.Sprintf("Vote{TxHash: %s, Validator:
 
 // VoteStatus tracks the voting status for a transfer event
 type VoteStatus struct {
-	TxHash      string `json:"tx_hash"`
-	Votes       []Vote `json:"votes"`
-	Confirmed   bool   `json:"confirmed"`
-	Threshold   int    `json:"threshold"`
-	VoteCount   int    `json:"vote_count"`
-	CreatedAt   int64  `json:"created_at"`
-	ConfirmedAt int64  `json:"confirmed_at"`
+	TxHash      string `protobuf:"bytes,1,opt,name=tx_hash,json=txHash,proto3" json:"tx_hash"`
+	Votes       []Vote `protobuf:"bytes,2,rep,name=votes,proto3" json:"votes"`
+	Confirmed   bool   `protobuf:"varint,3,opt,name=confirmed,proto3" json:"confirmed"`
+	Threshold   int32  `protobuf:"varint,4,opt,name=threshold,proto3" json:"threshold"`
+	VoteCount   int32  `protobuf:"varint,5,opt,name=vote_count,json=voteCount,proto3" json:"vote_count"`
+	CreatedAt   int64  `protobuf:"varint,6,opt,name=created_at,json=createdAt,proto3" json:"created_at"`
+	ConfirmedAt int64  `protobuf:"varint,7,opt,name=confirmed_at,json=confirmedAt,proto3" json:"confirmed_at"`
 }
 
 func (vs *VoteStatus) ProtoMessage()  {}
 func (vs *VoteStatus) Reset()         { *vs = VoteStatus{} }
-func (vs *VoteStatus) String() string { return fmt.Sprintf("VoteStatus{TxHash: %s, Confirmed: %v}", vs.TxHash, vs.Confirmed) }
+func (vs *VoteStatus) String() string {
+	return fmt.Sprintf("VoteStatus{TxHash: %s, Confirmed: %v}", vs.TxHash, vs.Confirmed)
+}
 
 // CreditToken represents a bank-issued credit token (IOU)
 type CreditToken struct {
-	Denom       string    `json:"denom"`        // Format: "cred-{BankID}"
-	IssuerBank  string    `json:"issuer_bank"`  // Bank that issued this credit
-	HolderBank  string    `json:"holder_bank"`  // Bank that holds this credit
-	Amount      math.Int  `json:"amount"`       // Amount of credit
-	OriginTx    string    `json:"origin_tx"`    // Original transfer transaction hash
-	IssuedAt    int64     `json:"issued_at"`    // Timestamp when issued
+	Denom      string   `protobuf:"bytes,1,opt,name=denom,proto3" json:"denom"`
+	IssuerBank string   `protobuf:"bytes,2,opt,name=issuer_bank,json=issuerBank,proto3" json:"issuer_bank"`
+	HolderBank string   `protobuf:"bytes,3,opt,name=holder_bank,json=holderBank,proto3" json:"holder_bank"`
+	Amount     math.Int `protobuf:"bytes,4,opt,name=amount,proto3,customtype=cosmossdk.io/math.Int" json:"amount"`
+	OriginTx   string   `protobuf:"bytes,5,opt,name=origin_tx,json=originTx,proto3" json:"origin_tx"`
+	IssuedAt   int64    `protobuf:"varint,6,opt,name=issued_at,json=issuedAt,proto3" json:"issued_at"`
 }
 
 func (ct *CreditToken) ProtoMessage()  {}
 func (ct *CreditToken) Reset()         { *ct = CreditToken{} }
-func (ct *CreditToken) String() string { return fmt.Sprintf("CreditToken{Denom: %s, Amount: %s}", ct.Denom, ct.Amount.String()) }
+func (ct *CreditToken) String() string {
+	return fmt.Sprintf("CreditToken{Denom: %s, Amount: %s}", ct.Denom, ct.Amount.String())
+}
 
 // NettingCycle represents a netting operation cycle
 type NettingCycle struct {
-	CycleID     uint64                `json:"cycle_id"`
-	BlockHeight int64                 `json:"block_height"`
-	Pairs       []BankPair            `json:"pairs"`
-	NetAmounts  map[string]math.Int   `json:"net_amounts"`
-	StartTime   int64                 `json:"start_time"`
-	EndTime     int64                 `json:"end_time"`
-	Status      NettingStatus         `json:"status"`
+	CycleID     uint64              `protobuf:"varint,1,opt,name=cycle_id,json=cycleId,proto3" json:"cycle_id"`
+	BlockHeight int64               `protobuf:"varint,2,opt,name=block_height,json=blockHeight,proto3" json:"block_height"`
+	Pairs       []BankPair          `protobuf:"bytes,3,rep,name=pairs,proto3" json:"pairs"`
+	NetAmounts  map[string]math.Int `protobuf:"bytes,4,rep,name=net_amounts,json=netAmounts,proto3" json:"net_amounts" protobuf_key:"bytes,1,opt,name=key,proto3" protobuf_val:"bytes,2,opt,name=value,proto3,customtype=cosmossdk.io/math.Int"`
+	StartTime   int64               `protobuf:"varint,5,opt,name=start_time,json=startTime,proto3" json:"start_time"`
+	EndTime     int64               `protobuf:"varint,6,opt,name=end_time,json=endTime,proto3" json:"end_time"`
+	Status      int32               `protobuf:"varint,7,opt,name=status,proto3" json:"status"`
 }
 
 func (nc *NettingCycle) ProtoMessage()  {}
 func (nc *NettingCycle) Reset()         { *nc = NettingCycle{} }
-func (nc *NettingCycle) String() string { return fmt.Sprintf("NettingCycle{CycleID: %d, Status: %d}", nc.CycleID, nc.Status) }
+func (nc *NettingCycle) String() string {
+	return fmt.Sprintf("NettingCycle{CycleID: %d, Status: %d}", nc.CycleID, nc.Status)
+}
 
 // BankPair represents a pair of banks involved in netting
 type BankPair struct {
-	BankA     string    `json:"bank_a"`
-	BankB     string    `json:"bank_b"`
-	AmountA   math.Int  `json:"amount_a"`     // Amount A owes to B
-	AmountB   math.Int  `json:"amount_b"`     // Amount B owes to A
-	NetAmount math.Int  `json:"net_amount"`   // Net amount after netting
-	NetDebtor string    `json:"net_debtor"`   // Which bank owes the net amount
+	BankA     string   `protobuf:"bytes,1,opt,name=bank_a,json=bankA,proto3" json:"bank_a"`
+	BankB     string   `protobuf:"bytes,2,opt,name=bank_b,json=bankB,proto3" json:"bank_b"`
+	AmountA   math.Int `protobuf:"bytes,3,opt,name=amount_a,json=amountA,proto3,customtype=cosmossdk.io/math.Int" json:"amount_a"`
+	AmountB   math.Int `protobuf:"bytes,4,opt,name=amount_b,json=amountB,proto3,customtype=cosmossdk.io/math.Int" json:"amount_b"`
+	NetAmount math.Int `protobuf:"bytes,5,opt,name=net_amount,json=netAmount,proto3,customtype=cosmossdk.io/math.Int" json:"net_amount"`
+	NetDebtor string   `protobuf:"bytes,6,opt,name=net_debtor,json=netDebtor,proto3" json:"net_debtor"`
 }
 
 func (bp *BankPair) ProtoMessage()  {}
@@ -106,23 +112,25 @@ const (
 
 // ValidatorSet represents the set of validators for multi-signature operations
 type ValidatorSet struct {
-	Validators   []Validator `json:"validators"`
-	Threshold    int         `json:"threshold"`    // Minimum signatures required (2/3)
-	UpdateHeight int64       `json:"update_height"`
-	Version      uint64      `json:"version"`
+	Validators   []Validator `protobuf:"bytes,1,rep,name=validators,proto3" json:"validators"`
+	Threshold    int32       `protobuf:"varint,2,opt,name=threshold,proto3" json:"threshold"`
+	UpdateHeight int64       `protobuf:"varint,3,opt,name=update_height,json=updateHeight,proto3" json:"update_height"`
+	Version      uint64      `protobuf:"varint,4,opt,name=version,proto3" json:"version"`
 }
 
 func (vs *ValidatorSet) ProtoMessage()  {}
 func (vs *ValidatorSet) Reset()         { *vs = ValidatorSet{} }
-func (vs *ValidatorSet) String() string { return fmt.Sprintf("ValidatorSet{ValidatorCount: %d, Threshold: %d}", len(vs.Validators), vs.Threshold) }
+func (vs *ValidatorSet) String() string {
+	return fmt.Sprintf("ValidatorSet{ValidatorCount: %d, Threshold: %d}", len(vs.Validators), vs.Threshold)
+}
 
 // Validator represents a validator in the set
 type Validator struct {
-	Address   string `json:"address"`
-	PubKey    []byte `json:"pub_key"`    // ECDSA public key
-	Power     int64  `json:"power"`      // Voting power
-	Active    bool   `json:"active"`     // Whether validator is active
-	JoinedAt  int64  `json:"joined_at"`  // When validator joined
+	Address  string `protobuf:"bytes,1,opt,name=address,proto3" json:"address"`
+	PubKey   []byte `protobuf:"bytes,2,opt,name=pub_key,json=pubKey,proto3" json:"pub_key"`
+	Power    int64  `protobuf:"varint,3,opt,name=power,proto3" json:"power"`
+	Active   bool   `protobuf:"varint,4,opt,name=active,proto3" json:"active"`
+	JoinedAt int64  `protobuf:"varint,5,opt,name=joined_at,json=joinedAt,proto3" json:"joined_at"`
 }
 
 func (v *Validator) ProtoMessage()  {}
@@ -131,26 +139,28 @@ func (v *Validator) String() string { return fmt.Sprintf("Validator{Address: %s,
 
 // MintCommand represents a command to mint tokens on a destination chain
 type MintCommand struct {
-	CommandID   string            `json:"command_id"`
-	TargetChain string            `json:"target_chain"`
-	Recipient   string            `json:"recipient"`
-	Amount      math.Int          `json:"amount"`
-	Signatures  []ECDSASignature  `json:"signatures"`
-	CreatedAt   int64             `json:"created_at"`
-	Status      CommandStatus     `json:"status"`
+	CommandID   string           `protobuf:"bytes,1,opt,name=command_id,json=commandId,proto3" json:"command_id"`
+	TargetChain string           `protobuf:"bytes,2,opt,name=target_chain,json=targetChain,proto3" json:"target_chain"`
+	Recipient   string           `protobuf:"bytes,3,opt,name=recipient,proto3" json:"recipient"`
+	Amount      math.Int         `protobuf:"bytes,4,opt,name=amount,proto3,customtype=cosmossdk.io/math.Int" json:"amount"`
+	Signatures  []ECDSASignature `protobuf:"bytes,5,rep,name=signatures,proto3" json:"signatures"`
+	CreatedAt   int64            `protobuf:"varint,6,opt,name=created_at,json=createdAt,proto3" json:"created_at"`
+	Status      int32            `protobuf:"varint,7,opt,name=status,proto3" json:"status"`
 }
 
 func (mc *MintCommand) ProtoMessage()  {}
 func (mc *MintCommand) Reset()         { *mc = MintCommand{} }
-func (mc *MintCommand) String() string { return fmt.Sprintf("MintCommand{CommandID: %s, Recipient: %s}", mc.CommandID, mc.Recipient) }
+func (mc *MintCommand) String() string {
+	return fmt.Sprintf("MintCommand{CommandID: %s, Recipient: %s}", mc.CommandID, mc.Recipient)
+}
 
 // ECDSASignature represents an ECDSA signature
 type ECDSASignature struct {
-	Validator string `json:"validator"`
-	R         []byte `json:"r"`
-	S         []byte `json:"s"`
-	V         uint8  `json:"v"`
-	Timestamp int64  `json:"timestamp"`
+	Validator string `protobuf:"bytes,1,opt,name=validator,proto3" json:"validator"`
+	R         []byte `protobuf:"bytes,2,opt,name=r,proto3" json:"r"`
+	S         []byte `protobuf:"bytes,3,opt,name=s,proto3" json:"s"`
+	V         uint32 `protobuf:"varint,4,opt,name=v,proto3" json:"v"`
+	Timestamp int64  `protobuf:"varint,5,opt,name=timestamp,proto3" json:"timestamp"`
 }
 
 func (es *ECDSASignature) ProtoMessage()  {}
@@ -169,12 +179,12 @@ const (
 
 // AuditLog represents an audit log entry
 type AuditLog struct {
-	ID          uint64            `json:"id"`
-	EventType   string            `json:"event_type"`
-	TxHash      string            `json:"tx_hash"`
-	Details     map[string]string `json:"details"`
-	Timestamp   int64             `json:"timestamp"`
-	BlockHeight int64             `json:"block_height"`
+	ID          uint64            `protobuf:"varint,1,opt,name=id,proto3" json:"id"`
+	EventType   string            `protobuf:"bytes,2,opt,name=event_type,json=eventType,proto3" json:"event_type"`
+	TxHash      string            `protobuf:"bytes,3,opt,name=tx_hash,json=txHash,proto3" json:"tx_hash"`
+	Details     map[string]string `protobuf:"bytes,4,rep,name=details,proto3" json:"details" protobuf_key:"bytes,1,opt,name=key,proto3" protobuf_val:"bytes,2,opt,name=value,proto3"`
+	Timestamp   int64             `protobuf:"varint,5,opt,name=timestamp,proto3" json:"timestamp"`
+	BlockHeight int64             `protobuf:"varint,6,opt,name=block_height,json=blockHeight,proto3" json:"block_height"`
 }
 
 // EventType constants for audit logging

@@ -1,13 +1,18 @@
 package keeper_test
 
 import (
+	"context"
 	"testing"
 	"time"
 
 	"cosmossdk.io/math"
 	storetypes "cosmossdk.io/store/types"
+	"github.com/cosmos/cosmos-sdk/codec"
+	codectypes "github.com/cosmos/cosmos-sdk/codec/types"
 	"github.com/cosmos/cosmos-sdk/testutil"
 	sdk "github.com/cosmos/cosmos-sdk/types"
+	paramtypes "github.com/cosmos/cosmos-sdk/x/params/types"
+	stakingtypes "github.com/cosmos/cosmos-sdk/x/staking/types"
 	"github.com/stretchr/testify/suite"
 
 	commontypes "github.com/interbank-netting/cosmos/types"
@@ -20,8 +25,9 @@ import (
 
 type ConsensusTestSuite struct {
 	suite.Suite
-	ctx    sdk.Context
-	keeper keeper.Keeper
+	ctx           sdk.Context
+	keeper        *keeper.Keeper
+	stakingKeeper *ConsensusTestMockStakingKeeper
 }
 
 func TestConsensusTestSuite(t *testing.T) {
@@ -32,7 +38,60 @@ func (suite *ConsensusTestSuite) SetupTest() {
 	storeKey := storetypes.NewKVStoreKey("oracle")
 	testCtx := testutil.DefaultContextWithDB(suite.T(), storeKey, storetypes.NewTransientStoreKey("transient_test"))
 	suite.ctx = testCtx.Ctx
-	suite.keeper = keeper.Keeper{} // Simplified for testing
+
+	// Create proto codec
+	interfaceRegistry := codectypes.NewInterfaceRegistry()
+	cdc := codec.NewProtoCodec(interfaceRegistry)
+
+	// Create mock keepers
+	mockBankKeeper := &ConsensusTestMockBankKeeper{}
+	suite.stakingKeeper = NewConsensusTestMockStakingKeeper()
+
+	// Create oracle keeper with proper initialization
+	suite.keeper = keeper.NewKeeper(
+		cdc,
+		storeKey,
+		nil, // memKey
+		paramtypes.Subspace{},
+		mockBankKeeper,
+		suite.stakingKeeper,
+	)
+}
+
+// Mock keepers for consensus tests
+type ConsensusTestMockBankKeeper struct{}
+
+func (m *ConsensusTestMockBankKeeper) SendCoins(ctx context.Context, fromAddr sdk.AccAddress, toAddr sdk.AccAddress, amt sdk.Coins) error {
+	return nil
+}
+
+func (m *ConsensusTestMockBankKeeper) GetBalance(ctx context.Context, addr sdk.AccAddress, denom string) sdk.Coin {
+	return sdk.NewCoin(denom, math.ZeroInt())
+}
+
+type ConsensusTestMockStakingKeeper struct {
+	validators map[string]stakingtypes.Validator
+}
+
+func NewConsensusTestMockStakingKeeper() *ConsensusTestMockStakingKeeper {
+	return &ConsensusTestMockStakingKeeper{
+		validators: make(map[string]stakingtypes.Validator),
+	}
+}
+
+func (m *ConsensusTestMockStakingKeeper) GetValidator(ctx context.Context, addr sdk.ValAddress) (stakingtypes.Validator, error) {
+	if v, ok := m.validators[addr.String()]; ok {
+		return v, nil
+	}
+	return stakingtypes.Validator{}, stakingtypes.ErrNoValidatorFound
+}
+
+func (m *ConsensusTestMockStakingKeeper) GetBondedValidatorsByPower(ctx context.Context) ([]stakingtypes.Validator, error) {
+	validators := make([]stakingtypes.Validator, 0, len(m.validators))
+	for _, v := range m.validators {
+		validators = append(validators, v)
+	}
+	return validators, nil
 }
 
 // Test voting collection (Requirement 3.1)
@@ -74,7 +133,7 @@ func (suite *ConsensusTestSuite) TestVoteCollection() {
 		// Vote was accepted, check vote status was created
 		voteStatus, found := k.GetVoteStatus(ctx, transferEvent.TxHash)
 		suite.Require().True(found, "vote status should be created")
-		suite.Require().Equal(1, voteStatus.VoteCount, "vote count should be 1")
+		suite.Require().Equal(int32(1), voteStatus.VoteCount, "vote count should be 1")
 		suite.Require().False(voteStatus.Confirmed, "should not be confirmed with single vote")
 	} else {
 		// Expected errors: validator not active, invalid signature

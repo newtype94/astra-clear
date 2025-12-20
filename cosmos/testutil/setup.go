@@ -172,8 +172,8 @@ func GenValidatorSet() gopter.Gen {
 		gen.UInt64(),
 	).Map(func(values []interface{}) types.ValidatorSet {
 		validators := values[0].([]types.Validator)
-		threshold := len(validators)*2/3 + 1 // 2/3 + 1 threshold
-		
+		threshold := int32(len(validators)*2/3 + 1) // 2/3 + 1 threshold
+
 		return types.ValidatorSet{
 			Validators:   validators,
 			Threshold:    threshold,
@@ -199,7 +199,7 @@ func GenMintCommand() gopter.Gen {
 			Amount:      values[3].(math.Int),
 			Signatures:  []types.ECDSASignature{}, // Empty initially
 			CreatedAt:   values[4].(int64),
-			Status:      types.CommandStatusPending,
+			Status:      int32(types.CommandStatusPending),
 		}
 	})
 }

@@ -52,7 +52,7 @@ func (k msgServer) SignCommand(goCtx context.Context, msg *multisigtypes.MsgSign
 	}
 
 	validatorSet := k.Keeper.GetValidatorSet(ctx)
-	thresholdMet := len(command.Signatures) >= validatorSet.Threshold
+	thresholdMet := int32(len(command.Signatures)) >= validatorSet.Threshold
 
 	return &multisigtypes.MsgSignCommandResponse{
 		Success:        true,

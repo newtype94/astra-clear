@@ -19,7 +19,7 @@ type MsgSignCommandResponse struct {
 type MsgUpdateValidatorSetResponse struct {
 	Success   bool   `json:"success"`
 	Version   uint64 `json:"version"`
-	Threshold int    `json:"threshold"`
+	Threshold int32  `json:"threshold"`
 }
 
 // MsgAddValidatorResponse defines the response for MsgAddValidator

@@ -7,9 +7,13 @@ import (
 	"cosmossdk.io/log"
 	"cosmossdk.io/math"
 	storetypes "cosmossdk.io/store/types"
+	"github.com/cosmos/cosmos-sdk/codec"
+	codectypes "github.com/cosmos/cosmos-sdk/codec/types"
+	"github.com/cosmos/cosmos-sdk/crypto/keys/secp256k1"
 	"github.com/cosmos/cosmos-sdk/runtime"
 	"github.com/cosmos/cosmos-sdk/testutil"
 	sdk "github.com/cosmos/cosmos-sdk/types"
+	paramtypes "github.com/cosmos/cosmos-sdk/x/params/types"
 	stakingtypes "github.com/cosmos/cosmos-sdk/x/staking/types"
 	"github.com/leanovate/gopter"
 	"github.com/leanovate/gopter/gen"
@@ -32,7 +36,7 @@ func TestProperty_ConsensusReached_OnlyWith2ThirdsMajority(t *testing.T) {
 			ctx, oracleKeeper, stakingKeeper := setupTestEnvironment(t, validatorCount)
 
 			// Calculate 2/3 threshold
-			threshold := (validatorCount * 2) / 3
+			threshold := int32((validatorCount * 2) / 3)
 			if (validatorCount*2)%3 != 0 {
 				threshold++ // Round up for 2/3+ majority
 			}
@@ -45,7 +49,7 @@ func TestProperty_ConsensusReached_OnlyWith2ThirdsMajority(t *testing.T) {
 			setupValidators(ctx, stakingKeeper, validators)
 
 			// Test case 1: Insufficient votes (less than 2/3)
-			insufficientVotes := threshold - 1
+			insufficientVotes := int(threshold - 1)
 			if insufficientVotes > 0 {
 				submitVotes(ctx, oracleKeeper, transferEvent, validators[:insufficientVotes])
 
@@ -63,7 +67,7 @@ func TestProperty_ConsensusReached_OnlyWith2ThirdsMajority(t *testing.T) {
 			}
 
 			// Test case 2: Sufficient votes (exactly 2/3 or more)
-			submitVotes(ctx, oracleKeeper, transferEvent, validators[:threshold])
+			submitVotes(ctx, oracleKeeper, transferEvent, validators[:int(threshold)])
 
 			// Check that consensus IS reached
 			consensus, err := oracleKeeper.CheckConsensus(ctx, transferEvent.TxHash)
@@ -196,7 +200,7 @@ func TestProperty_DuplicateVotes_AreRejected(t *testing.T) {
 
 // Helper functions for testing
 
-func setupTestEnvironment(t *testing.T, validatorCount int) (sdk.Context, keeper.Keeper, *MockStakingKeeper) {
+func setupTestEnvironment(t *testing.T, validatorCount int) (sdk.Context, *keeper.Keeper, *MockStakingKeeper) {
 	// Create store key
 	storeKey := storetypes.NewKVStoreKey("oracle")
 
@@ -204,13 +208,40 @@ func setupTestEnvironment(t *testing.T, validatorCount int) (sdk.Context, keeper
 	testCtx := testutil.DefaultContextWithDB(t, storeKey, storetypes.NewTransientStoreKey("transient_test"))
 	ctx := testCtx.Ctx
 
-	// Create mock staking keeper
+	// Create proto codec
+	interfaceRegistry := codectypes.NewInterfaceRegistry()
+	cdc := codec.NewProtoCodec(interfaceRegistry)
+
+	// Create mock keepers
+	mockBankKeeper := NewMockBankKeeper()
 	stakingKeeper := NewMockStakingKeeper()
 
-	// Create oracle keeper with mocks
-	oracleKeeper := keeper.Keeper{} // Simplified for property testing
+	// Create oracle keeper with proper initialization
+	oracleKeeper := keeper.NewKeeper(
+		cdc,
+		storeKey,
+		nil, // memKey
+		paramtypes.Subspace{},
+		mockBankKeeper,
+		stakingKeeper,
+	)
 
 	return ctx, oracleKeeper, stakingKeeper
+}
+
+// MockBankKeeper for testing
+type MockBankKeeper struct{}
+
+func NewMockBankKeeper() *MockBankKeeper {
+	return &MockBankKeeper{}
+}
+
+func (m *MockBankKeeper) SendCoins(ctx context.Context, fromAddr sdk.AccAddress, toAddr sdk.AccAddress, amt sdk.Coins) error {
+	return nil
+}
+
+func (m *MockBankKeeper) GetBalance(ctx context.Context, addr sdk.AccAddress, denom string) sdk.Coin {
+	return sdk.NewCoin(denom, math.ZeroInt())
 }
 
 func generateValidators(count int) []types.Validator {
@@ -233,7 +264,7 @@ func setupValidators(ctx sdk.Context, stakingKeeper *MockStakingKeeper, validato
 	}
 }
 
-func submitVotes(ctx sdk.Context, oracleKeeper keeper.Keeper, transferEvent types.TransferEvent, validators []types.Validator) {
+func submitVotes(ctx sdk.Context, oracleKeeper *keeper.Keeper, transferEvent types.TransferEvent, validators []types.Validator) {
 	for _, validator := range validators {
 		vote := types.Vote{
 			TxHash:    transferEvent.TxHash,
@@ -250,37 +281,48 @@ func submitVotes(ctx sdk.Context, oracleKeeper keeper.Keeper, transferEvent type
 
 // MockStakingKeeper for testing
 type MockStakingKeeper struct {
-	validators map[string]types.Validator
+	validators       map[string]types.Validator
+	stakingValidator map[string]stakingtypes.Validator
 }
 
 func NewMockStakingKeeper() *MockStakingKeeper {
 	return &MockStakingKeeper{
-		validators: make(map[string]types.Validator),
+		validators:       make(map[string]types.Validator),
+		stakingValidator: make(map[string]stakingtypes.Validator),
 	}
 }
 
 func (m *MockStakingKeeper) SetValidator(validator types.Validator) {
 	m.validators[validator.Address] = validator
+
+	// Create a mock staking validator with a proper consensus pubkey
+	privKey := secp256k1.GenPrivKey()
+	pubKey := privKey.PubKey()
+	pkAny, _ := codectypes.NewAnyWithValue(pubKey)
+
+	stakingVal := stakingtypes.Validator{
+		OperatorAddress:   validator.Address,
+		ConsensusPubkey:   pkAny,
+		Status:            stakingtypes.Bonded,
+		Jailed:            false,
+		DelegatorShares:   math.LegacyNewDec(1),
+		MinSelfDelegation: math.NewInt(1),
+	}
+	m.stakingValidator[validator.Address] = stakingVal
 }
 
 func (m *MockStakingKeeper) GetValidator(ctx context.Context, addr sdk.ValAddress) (stakingtypes.Validator, error) {
 	// Mock implementation for testing
-	if v, ok := m.validators[addr.String()]; ok {
-		return stakingtypes.Validator{
-			OperatorAddress: v.Address,
-			Status:          stakingtypes.Bonded,
-		}, nil
+	if v, ok := m.stakingValidator[addr.String()]; ok {
+		return v, nil
 	}
 	return stakingtypes.Validator{}, stakingtypes.ErrNoValidatorFound
 }
 
 func (m *MockStakingKeeper) GetBondedValidatorsByPower(ctx context.Context) ([]stakingtypes.Validator, error) {
-	validators := make([]stakingtypes.Validator, 0, len(m.validators))
-	for _, v := range m.validators {
-		validators = append(validators, stakingtypes.Validator{
-			OperatorAddress: v.Address,
-			Status:          stakingtypes.Bonded,
-		})
+	validators := make([]stakingtypes.Validator, 0, len(m.stakingValidator))
+	for _, v := range m.stakingValidator {
+		validators = append(validators, v)
 	}
 	return validators, nil
 }

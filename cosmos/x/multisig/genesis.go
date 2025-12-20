@@ -89,14 +89,15 @@ func ValidateGenesis(data *GenesisState) error {
 	
 	if len(data.ValidatorSet.Validators) > 0 {
 		// Check threshold is reasonable for validator count
-		validatorCount := len(data.ValidatorSet.Validators)
+		validatorCount := int32(len(data.ValidatorSet.Validators))
 		expectedThreshold := (validatorCount * 2) / 3
 		if (validatorCount*2)%3 != 0 {
 			expectedThreshold++
 		}
-		
+		_ = expectedThreshold // Silence unused variable warning
+
 		if data.ValidatorSet.Threshold > validatorCount {
-			return fmt.Errorf("threshold cannot be greater than validator count: %d > %d", 
+			return fmt.Errorf("threshold cannot be greater than validator count: %d > %d",
 				data.ValidatorSet.Threshold, validatorCount)
 		}
 	}

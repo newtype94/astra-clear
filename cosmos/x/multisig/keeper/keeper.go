@@ -90,7 +90,7 @@ func (k Keeper) UpdateValidatorSet(ctx sdk.Context, validators []types.Validator
 	// Create new validator set
 	validatorSet := types.ValidatorSet{
 		Validators:   validators,
-		Threshold:    threshold,
+		Threshold:    int32(threshold),
 		UpdateHeight: ctx.BlockHeight(),
 		Version:      newVersion,
 	}
@@ -138,7 +138,7 @@ func (k Keeper) AddValidator(ctx sdk.Context, validator types.Validator) error {
 	if threshold < 1 {
 		threshold = 1
 	}
-	validatorSet.Threshold = threshold
+	validatorSet.Threshold = int32(threshold)
 	validatorSet.Version++
 	validatorSet.UpdateHeight = ctx.BlockHeight()
 
@@ -194,7 +194,7 @@ func (k Keeper) RemoveValidator(ctx sdk.Context, address string) error {
 	if threshold < 1 {
 		threshold = 1
 	}
-	validatorSet.Threshold = threshold
+	validatorSet.Threshold = int32(threshold)
 	validatorSet.Version++
 	validatorSet.UpdateHeight = ctx.BlockHeight()
 
@@ -206,7 +206,7 @@ func (k Keeper) RemoveValidator(ctx sdk.Context, address string) error {
 		sdk.NewEvent(
 			multisigtypes.EventTypeValidatorRemoved,
 			sdk.NewAttribute(multisigtypes.AttributeKeyValidatorAddress, address),
-			sdk.NewAttribute(multisigtypes.AttributeKeyThreshold, strconv.Itoa(threshold)),
+			sdk.NewAttribute(multisigtypes.AttributeKeyThreshold, strconv.Itoa(int(threshold))),
 		),
 	)
 
@@ -226,7 +226,7 @@ func (k Keeper) GenerateMintCommand(ctx sdk.Context, targetChain, recipient stri
 		Amount:      amount,
 		Signatures:  []types.ECDSASignature{},
 		CreatedAt:   ctx.BlockTime().Unix(),
-		Status:      types.CommandStatusPending,
+		Status:      int32(types.CommandStatusPending),
 	}
 
 	// Store command
@@ -258,9 +258,9 @@ func (k Keeper) CollectSignatures(ctx sdk.Context, commandID string) error {
 	validatorSet := k.GetValidatorSet(ctx)
 
 	// Check if we have enough signatures
-	if len(command.Signatures) >= validatorSet.Threshold {
+	if int32(len(command.Signatures)) >= validatorSet.Threshold {
 		// Mark command as signed
-		command.Status = types.CommandStatusSigned
+		command.Status = int32(types.CommandStatusSigned)
 		k.setMintCommand(ctx, command)
 
 		// Emit threshold reached event
@@ -269,7 +269,7 @@ func (k Keeper) CollectSignatures(ctx sdk.Context, commandID string) error {
 				multisigtypes.EventTypeThresholdReached,
 				sdk.NewAttribute(multisigtypes.AttributeKeyCommandID, commandID),
 				sdk.NewAttribute(multisigtypes.AttributeKeySignatureCount, strconv.Itoa(len(command.Signatures))),
-				sdk.NewAttribute(multisigtypes.AttributeKeyThreshold, strconv.Itoa(validatorSet.Threshold)),
+				sdk.NewAttribute(multisigtypes.AttributeKeyThreshold, strconv.FormatInt(int64(validatorSet.Threshold), 10)),
 			),
 		)
 	}
@@ -280,16 +280,16 @@ func (k Keeper) CollectSignatures(ctx sdk.Context, commandID string) error {
 // VerifyCommand verifies a mint command's signatures
 func (k Keeper) VerifyCommand(ctx sdk.Context, command types.MintCommand) bool {
 	validatorSet := k.GetValidatorSet(ctx)
-	
+
 	// Check if we have enough signatures
-	if len(command.Signatures) < validatorSet.Threshold {
+	if int32(len(command.Signatures)) < validatorSet.Threshold {
 		return false
 	}
 
 	// Verify each signature
-	validSignatures := 0
+	validSignatures := int32(0)
 	commandHash := k.hashCommand(command)
-	
+
 	for _, signature := range command.Signatures {
 		if k.VerifyECDSASignature(ctx, commandHash, signature) {
 			validSignatures++
@@ -428,7 +428,7 @@ func (k Keeper) getDefaultValidatorSet(ctx sdk.Context) types.ValidatorSet {
 
 	return types.ValidatorSet{
 		Validators:   validators,
-		Threshold:    threshold,
+		Threshold:    int32(threshold),
 		UpdateHeight: ctx.BlockHeight(),
 		Version:      1,
 	}

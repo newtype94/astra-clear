@@ -309,7 +309,7 @@ func (k Keeper) ExecuteNetting(ctx sdk.Context, pairs []types.BankPair) error {
 		Pairs:       pairs,
 		NetAmounts:  make(map[string]math.Int),
 		StartTime:   ctx.BlockTime().Unix(),
-		Status:      types.NettingStatusInProgress,
+		Status:      int32(types.NettingStatusInProgress),
 	}
 
 	// Execute netting for each pair
@@ -336,7 +336,7 @@ func (k Keeper) ExecuteNetting(ctx sdk.Context, pairs []types.BankPair) error {
 
 	// Mark cycle as completed
 	cycle.EndTime = ctx.BlockTime().Unix()
-	cycle.Status = types.NettingStatusCompleted
+	cycle.Status = int32(types.NettingStatusCompleted)
 
 	// Store netting cycle
 	k.setNettingCycle(ctx, cycle)
