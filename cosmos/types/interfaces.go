@@ -1,6 +1,8 @@
 package types
 
 import (
+	"context"
+
 	"cosmossdk.io/math"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	stakingtypes "github.com/cosmos/cosmos-sdk/x/staking/types"
@@ -76,9 +78,9 @@ type AccountKeeper interface {
 
 // StakingKeeper defines the expected interface for the staking module
 type StakingKeeper interface {
-	GetValidator(ctx sdk.Context, addr sdk.ValAddress) (validator stakingtypes.ValidatorI, found bool)
-	GetAllValidators(ctx sdk.Context) (validators []stakingtypes.ValidatorI)
-	GetBondedValidatorsByPower(ctx sdk.Context) []stakingtypes.ValidatorI
+	GetValidator(ctx context.Context, addr sdk.ValAddress) (validator stakingtypes.Validator, err error)
+	GetAllValidators(ctx context.Context) (validators []stakingtypes.Validator, err error)
+	GetBondedValidatorsByPower(ctx context.Context) ([]stakingtypes.Validator, error)
 }
 
 // EventEmitter defines the interface for emitting blockchain events

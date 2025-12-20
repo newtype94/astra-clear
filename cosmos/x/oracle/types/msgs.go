@@ -22,6 +22,17 @@ type MsgVote struct {
 	Signature   []byte                   `json:"signature"`
 }
 
+// ProtoMessage implements proto.Message
+func (msg *MsgVote) ProtoMessage() {}
+
+// Reset implements proto.Message
+func (msg *MsgVote) Reset() { *msg = MsgVote{} }
+
+// String implements proto.Message
+func (msg *MsgVote) String() string {
+	return fmt.Sprintf("MsgVote{TxHash: %s, Validator: %s}", msg.TxHash, msg.Validator)
+}
+
 // NewMsgVote creates a new MsgVote instance
 func NewMsgVote(txHash, validator string, eventData commontypes.TransferEvent, signature []byte) *MsgVote {
 	return &MsgVote{

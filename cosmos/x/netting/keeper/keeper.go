@@ -4,10 +4,10 @@ import (
 	"fmt"
 	"strconv"
 
-	"github.com/cometbft/cometbft/libs/log"
+	"cosmossdk.io/log"
 	"cosmossdk.io/math"
-	"github.com/cosmos/cosmos-sdk/codec"
 	storetypes "cosmossdk.io/store/types"
+	"github.com/cosmos/cosmos-sdk/codec"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	paramtypes "github.com/cosmos/cosmos-sdk/x/params/types"
 
@@ -160,31 +160,46 @@ func (k Keeper) GetCreditBalance(ctx sdk.Context, bank, denom string) math.Int {
 	}
 
 	var balance math.Int
-	k.cdc.MustUnmarshal(bz, &balance)
+	if err := balance.Unmarshal(bz); err != nil {
+		return math.ZeroInt()
+	}
 	return balance
 }
 
 // GetAllCreditBalances returns all credit balances for a bank
 func (k Keeper) GetAllCreditBalances(ctx sdk.Context, bank string) map[string]math.Int {
 	store := ctx.KVStore(k.storeKey)
-	iterator := sdk.KVStorePrefixIterator(store, append(nettingtypes.CreditBalanceKeyPrefix, []byte(bank)...))
+	iterator := storetypes.KVStorePrefixIterator(store, append(nettingtypes.CreditBalanceKeyPrefix, []byte(bank)...))
 	defer iterator.Close()
 
 	balances := make(map[string]math.Int)
 	for ; iterator.Valid(); iterator.Next() {
 		var balance math.Int
-		k.cdc.MustUnmarshal(iterator.Value(), &balance)
-		
-		// Extract denom from key
-		key := string(iterator.Key())
-		parts := sdk.SplitPath(key)
-		if len(parts) >= 2 {
-			denom := parts[len(parts)-1]
+		if err := balance.Unmarshal(iterator.Value()); err != nil {
+			continue
+		}
+
+		// Extract denom from key - key format is prefix + bank + denom
+		key := iterator.Key()
+		// Find the last separator to extract denom
+		keyStr := string(key)
+		if idx := lastIndexByte(keyStr, '/'); idx != -1 {
+			denom := keyStr[idx+1:]
 			balances[denom] = balance
 		}
 	}
 
 	return balances
+}
+
+// lastIndexByte returns the index of the last instance of c in s, or -1 if c is not present in s.
+func lastIndexByte(s string, c byte) int {
+	for i := len(s) - 1; i >= 0; i-- {
+		if s[i] == c {
+			return i
+		}
+	}
+	return -1
 }
 
 // GetDebtPosition returns the debt position between two banks
@@ -292,7 +307,7 @@ func (k Keeper) ExecuteNetting(ctx sdk.Context, pairs []types.BankPair) error {
 		CycleID:     cycleID,
 		BlockHeight: ctx.BlockHeight(),
 		Pairs:       pairs,
-		NetAmounts:  make(map[string]sdk.Int),
+		NetAmounts:  make(map[string]math.Int),
 		StartTime:   ctx.BlockTime().Unix(),
 		Status:      types.NettingStatusInProgress,
 	}
@@ -417,23 +432,26 @@ func (k Keeper) subtractCreditBalance(ctx sdk.Context, bank, denom string, amoun
 func (k Keeper) setCreditBalance(ctx sdk.Context, bank, denom string, balance math.Int) {
 	store := ctx.KVStore(k.storeKey)
 	key := nettingtypes.GetCreditBalanceKey(bank, denom)
-	bz := k.cdc.MustMarshal(&balance)
+	bz, _ := balance.Marshal()
 	store.Set(key, bz)
 }
 
 func (k Keeper) getAllBanksWithCredits(ctx sdk.Context) []string {
 	store := ctx.KVStore(k.storeKey)
-	iterator := sdk.KVStorePrefixIterator(store, nettingtypes.CreditBalanceKeyPrefix)
+	iterator := storetypes.KVStorePrefixIterator(store, nettingtypes.CreditBalanceKeyPrefix)
 	defer iterator.Close()
 
 	bankSet := make(map[string]bool)
 	for ; iterator.Valid(); iterator.Next() {
-		// Extract bank from key
-		key := string(iterator.Key())
-		parts := sdk.SplitPath(key)
-		if len(parts) >= 2 {
-			bank := parts[1]
-			bankSet[bank] = true
+		// Extract bank from key - format is prefix/bank/denom
+		keyStr := string(iterator.Key())
+		// Find bank between first and second separator
+		if firstIdx := lastIndexByte(keyStr[:len(keyStr)/2], '/'); firstIdx != -1 {
+			remaining := keyStr[firstIdx+1:]
+			if secondIdx := lastIndexByte(remaining, '/'); secondIdx != -1 {
+				bank := remaining[:secondIdx]
+				bankSet[bank] = true
+			}
 		}
 	}
 
@@ -448,21 +466,34 @@ func (k Keeper) getAllBanksWithCredits(ctx sdk.Context) []string {
 func (k Keeper) getLastNettingBlock(ctx sdk.Context) int64 {
 	store := ctx.KVStore(k.storeKey)
 	key := nettingtypes.GetLastNettingBlockKey()
-	
+
 	bz := store.Get(key)
 	if bz == nil {
 		return 0
 	}
 
-	var blockHeight int64
-	k.cdc.MustUnmarshal(bz, &blockHeight)
+	// Parse int64 from bytes
+	if len(bz) != 8 {
+		return 0
+	}
+	blockHeight := int64(bz[0]) | int64(bz[1])<<8 | int64(bz[2])<<16 | int64(bz[3])<<24 |
+		int64(bz[4])<<32 | int64(bz[5])<<40 | int64(bz[6])<<48 | int64(bz[7])<<56
 	return blockHeight
 }
 
 func (k Keeper) setLastNettingBlock(ctx sdk.Context, blockHeight int64) {
 	store := ctx.KVStore(k.storeKey)
 	key := nettingtypes.GetLastNettingBlockKey()
-	bz := k.cdc.MustMarshal(&blockHeight)
+	// Encode int64 to bytes
+	bz := make([]byte, 8)
+	bz[0] = byte(blockHeight)
+	bz[1] = byte(blockHeight >> 8)
+	bz[2] = byte(blockHeight >> 16)
+	bz[3] = byte(blockHeight >> 24)
+	bz[4] = byte(blockHeight >> 32)
+	bz[5] = byte(blockHeight >> 40)
+	bz[6] = byte(blockHeight >> 48)
+	bz[7] = byte(blockHeight >> 56)
 	store.Set(key, bz)
 }
 

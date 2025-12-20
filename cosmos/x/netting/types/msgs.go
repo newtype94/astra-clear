@@ -26,6 +26,17 @@ type MsgIssueCreditToken struct {
 	CreditToken types.CreditToken  `json:"credit_token"`
 }
 
+// ProtoMessage implements proto.Message
+func (msg *MsgIssueCreditToken) ProtoMessage() {}
+
+// Reset implements proto.Message
+func (msg *MsgIssueCreditToken) Reset() { *msg = MsgIssueCreditToken{} }
+
+// String implements proto.Message
+func (msg *MsgIssueCreditToken) String() string {
+	return fmt.Sprintf("MsgIssueCreditToken{Issuer: %s, Denom: %s}", msg.Issuer, msg.CreditToken.Denom)
+}
+
 // NewMsgIssueCreditToken creates a new MsgIssueCreditToken instance
 func NewMsgIssueCreditToken(issuer string, creditToken types.CreditToken) *MsgIssueCreditToken {
 	return &MsgIssueCreditToken{
@@ -100,6 +111,17 @@ type MsgBurnCreditToken struct {
 	Amount math.Int `json:"amount"`
 }
 
+// ProtoMessage implements proto.Message
+func (msg *MsgBurnCreditToken) ProtoMessage() {}
+
+// Reset implements proto.Message
+func (msg *MsgBurnCreditToken) Reset() { *msg = MsgBurnCreditToken{} }
+
+// String implements proto.Message
+func (msg *MsgBurnCreditToken) String() string {
+	return fmt.Sprintf("MsgBurnCreditToken{Burner: %s, Denom: %s, Amount: %s}", msg.Burner, msg.Denom, msg.Amount.String())
+}
+
 // NewMsgBurnCreditToken creates a new MsgBurnCreditToken instance
 func NewMsgBurnCreditToken(burner, denom string, amount math.Int) *MsgBurnCreditToken {
 	return &MsgBurnCreditToken{
@@ -159,6 +181,17 @@ func (msg MsgBurnCreditToken) ValidateBasic() error {
 // MsgTriggerNetting defines a message for triggering netting process
 type MsgTriggerNetting struct {
 	Triggerer string `json:"triggerer"`
+}
+
+// ProtoMessage implements proto.Message
+func (msg *MsgTriggerNetting) ProtoMessage() {}
+
+// Reset implements proto.Message
+func (msg *MsgTriggerNetting) Reset() { *msg = MsgTriggerNetting{} }
+
+// String implements proto.Message
+func (msg *MsgTriggerNetting) String() string {
+	return fmt.Sprintf("MsgTriggerNetting{Triggerer: %s}", msg.Triggerer)
 }
 
 // NewMsgTriggerNetting creates a new MsgTriggerNetting instance

@@ -1,6 +1,8 @@
 package types
 
 import (
+	"fmt"
+
 	"cosmossdk.io/math"
 )
 
@@ -17,6 +19,10 @@ type TransferEvent struct {
 	Timestamp   int64     `json:"timestamp"`
 }
 
+func (t *TransferEvent) ProtoMessage()  {}
+func (t *TransferEvent) Reset()         { *t = TransferEvent{} }
+func (t *TransferEvent) String() string { return fmt.Sprintf("TransferEvent{TxHash: %s}", t.TxHash) }
+
 // Vote represents a validator's vote on a transfer event
 type Vote struct {
 	TxHash      string        `json:"tx_hash"`
@@ -25,6 +31,10 @@ type Vote struct {
 	Signature   []byte        `json:"signature"`
 	VoteTime    int64         `json:"vote_time"`
 }
+
+func (v *Vote) ProtoMessage()  {}
+func (v *Vote) Reset()         { *v = Vote{} }
+func (v *Vote) String() string { return fmt.Sprintf("Vote{TxHash: %s, Validator: %s}", v.TxHash, v.Validator) }
 
 // VoteStatus tracks the voting status for a transfer event
 type VoteStatus struct {
@@ -37,6 +47,10 @@ type VoteStatus struct {
 	ConfirmedAt int64  `json:"confirmed_at"`
 }
 
+func (vs *VoteStatus) ProtoMessage()  {}
+func (vs *VoteStatus) Reset()         { *vs = VoteStatus{} }
+func (vs *VoteStatus) String() string { return fmt.Sprintf("VoteStatus{TxHash: %s, Confirmed: %v}", vs.TxHash, vs.Confirmed) }
+
 // CreditToken represents a bank-issued credit token (IOU)
 type CreditToken struct {
 	Denom       string    `json:"denom"`        // Format: "cred-{BankID}"
@@ -46,6 +60,10 @@ type CreditToken struct {
 	OriginTx    string    `json:"origin_tx"`    // Original transfer transaction hash
 	IssuedAt    int64     `json:"issued_at"`    // Timestamp when issued
 }
+
+func (ct *CreditToken) ProtoMessage()  {}
+func (ct *CreditToken) Reset()         { *ct = CreditToken{} }
+func (ct *CreditToken) String() string { return fmt.Sprintf("CreditToken{Denom: %s, Amount: %s}", ct.Denom, ct.Amount.String()) }
 
 // NettingCycle represents a netting operation cycle
 type NettingCycle struct {
@@ -58,6 +76,10 @@ type NettingCycle struct {
 	Status      NettingStatus         `json:"status"`
 }
 
+func (nc *NettingCycle) ProtoMessage()  {}
+func (nc *NettingCycle) Reset()         { *nc = NettingCycle{} }
+func (nc *NettingCycle) String() string { return fmt.Sprintf("NettingCycle{CycleID: %d, Status: %d}", nc.CycleID, nc.Status) }
+
 // BankPair represents a pair of banks involved in netting
 type BankPair struct {
 	BankA     string    `json:"bank_a"`
@@ -67,6 +89,10 @@ type BankPair struct {
 	NetAmount math.Int  `json:"net_amount"`   // Net amount after netting
 	NetDebtor string    `json:"net_debtor"`   // Which bank owes the net amount
 }
+
+func (bp *BankPair) ProtoMessage()  {}
+func (bp *BankPair) Reset()         { *bp = BankPair{} }
+func (bp *BankPair) String() string { return fmt.Sprintf("BankPair{BankA: %s, BankB: %s}", bp.BankA, bp.BankB) }
 
 // NettingStatus represents the status of a netting cycle
 type NettingStatus int
@@ -86,6 +112,10 @@ type ValidatorSet struct {
 	Version      uint64      `json:"version"`
 }
 
+func (vs *ValidatorSet) ProtoMessage()  {}
+func (vs *ValidatorSet) Reset()         { *vs = ValidatorSet{} }
+func (vs *ValidatorSet) String() string { return fmt.Sprintf("ValidatorSet{ValidatorCount: %d, Threshold: %d}", len(vs.Validators), vs.Threshold) }
+
 // Validator represents a validator in the set
 type Validator struct {
 	Address   string `json:"address"`
@@ -94,6 +124,10 @@ type Validator struct {
 	Active    bool   `json:"active"`     // Whether validator is active
 	JoinedAt  int64  `json:"joined_at"`  // When validator joined
 }
+
+func (v *Validator) ProtoMessage()  {}
+func (v *Validator) Reset()         { *v = Validator{} }
+func (v *Validator) String() string { return fmt.Sprintf("Validator{Address: %s, Power: %d}", v.Address, v.Power) }
 
 // MintCommand represents a command to mint tokens on a destination chain
 type MintCommand struct {
@@ -106,6 +140,10 @@ type MintCommand struct {
 	Status      CommandStatus     `json:"status"`
 }
 
+func (mc *MintCommand) ProtoMessage()  {}
+func (mc *MintCommand) Reset()         { *mc = MintCommand{} }
+func (mc *MintCommand) String() string { return fmt.Sprintf("MintCommand{CommandID: %s, Recipient: %s}", mc.CommandID, mc.Recipient) }
+
 // ECDSASignature represents an ECDSA signature
 type ECDSASignature struct {
 	Validator string `json:"validator"`
@@ -114,6 +152,10 @@ type ECDSASignature struct {
 	V         uint8  `json:"v"`
 	Timestamp int64  `json:"timestamp"`
 }
+
+func (es *ECDSASignature) ProtoMessage()  {}
+func (es *ECDSASignature) Reset()         { *es = ECDSASignature{} }
+func (es *ECDSASignature) String() string { return fmt.Sprintf("ECDSASignature{Validator: %s}", es.Validator) }
 
 // CommandStatus represents the status of a mint command
 type CommandStatus int

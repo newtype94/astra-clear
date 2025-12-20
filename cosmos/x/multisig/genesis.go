@@ -1,6 +1,9 @@
 package multisig
 
 import (
+	"fmt"
+
+	"cosmossdk.io/math"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	"github.com/interbank-netting/cosmos/types"
 	"github.com/interbank-netting/cosmos/x/multisig/keeper"
@@ -111,7 +114,7 @@ func ValidateGenesis(data *GenesisState) error {
 		if command.Recipient == "" {
 			return fmt.Errorf("mint command %d: recipient cannot be empty", i)
 		}
-		if command.Amount.IsNil() || command.Amount.LTE(sdk.ZeroInt()) {
+		if command.Amount.IsNil() || command.Amount.LTE(math.ZeroInt()) {
 			return fmt.Errorf("mint command %d: amount must be positive", i)
 		}
 	}
@@ -130,10 +133,8 @@ func InitGenesis(ctx sdk.Context, keeper keeper.Keeper, genState *GenesisState) 
 	}
 	
 	// Initialize mint commands
-	for _, command := range genState.MintCommands {
-		// Store mint command (keeper method would need to be implemented)
-		// keeper.SetMintCommand(ctx, command)
-	}
+	// TODO: Implement when keeper methods are available
+	_ = genState.MintCommands
 	
 	// Set parameters (would need parameter store implementation)
 	// keeper.SetParams(ctx, genState.Params)
@@ -154,6 +155,3 @@ func ExportGenesis(ctx sdk.Context, keeper keeper.Keeper) *GenesisState {
 	
 	return genesis
 }
-
-// Import fmt for error formatting
-import "fmt"

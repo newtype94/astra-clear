@@ -1,19 +1,15 @@
 package keeper
 
 import (
-	"crypto/ecdsa"
-	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/sha256"
 	"fmt"
-	"math/big"
 	"strconv"
-	"time"
 
-	"github.com/cometbft/cometbft/libs/log"
+	"cosmossdk.io/log"
 	"cosmossdk.io/math"
-	"github.com/cosmos/cosmos-sdk/codec"
 	storetypes "cosmossdk.io/store/types"
+	"github.com/cosmos/cosmos-sdk/codec"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	paramtypes "github.com/cosmos/cosmos-sdk/x/params/types"
 
@@ -321,7 +317,7 @@ func (k Keeper) GetCommand(ctx sdk.Context, commandID string) (types.MintCommand
 // SignData signs data with a validator's key (mock implementation)
 func (k Keeper) SignData(ctx sdk.Context, validator string, data []byte) (types.ECDSASignature, error) {
 	// Get validator info
-	val, found := k.getValidator(ctx, validator)
+	_, found := k.getValidator(ctx, validator)
 	if !found {
 		return types.ECDSASignature{}, multisigtypes.ErrValidatorNotFound
 	}
@@ -400,17 +396,20 @@ func (k Keeper) AddSignatureToCommand(ctx sdk.Context, commandID string, signatu
 
 func (k Keeper) getDefaultValidatorSet(ctx sdk.Context) types.ValidatorSet {
 	// Get validators from staking module
-	stakingValidators := k.stakingKeeper.GetBondedValidatorsByPower(ctx)
-	
+	stakingValidators, err := k.stakingKeeper.GetBondedValidatorsByPower(ctx)
+	if err != nil {
+		return types.ValidatorSet{Threshold: 1}
+	}
+
 	validators := make([]types.Validator, 0, len(stakingValidators))
 	for _, stakingVal := range stakingValidators {
 		pubKey, err := stakingVal.ConsPubKey()
 		if err != nil {
 			continue
 		}
-		
+
 		validator := types.Validator{
-			Address:  stakingVal.GetOperator().String(),
+			Address:  stakingVal.GetOperator(),
 			PubKey:   pubKey.Bytes(),
 			Power:    stakingVal.GetTokens().Int64(),
 			Active:   stakingVal.IsBonded(),

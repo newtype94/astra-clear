@@ -27,7 +27,9 @@ func RegisterInterfaces(registry cdctypes.InterfaceRegistry) {
 		&MsgRemoveValidator{},
 	)
 
-	msgservice.RegisterMsgServiceDesc(registry, &_Msg_serviceDesc)
+	// Note: MsgServiceDesc registration requires protobuf generation
+	// msgservice.RegisterMsgServiceDesc(registry, &_Msg_serviceDesc)
+	_ = msgservice.RegisterMsgServiceDesc // silence unused import
 }
 
 // RegisterMsgServer registers the msg server

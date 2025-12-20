@@ -1,6 +1,8 @@
 package oracle
 
 import (
+	"fmt"
+
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	"github.com/interbank-netting/cosmos/types"
 	"github.com/interbank-netting/cosmos/x/oracle/keeper"
@@ -56,21 +58,19 @@ func ValidateGenesis(data *GenesisState) error {
 }
 
 // InitGenesis initializes the oracle module's state from a provided genesis state.
-func InitGenesis(ctx sdk.Context, keeper keeper.Keeper, genState *GenesisState) {
+func InitGenesis(ctx sdk.Context, k keeper.Keeper, genState *GenesisState) {
 	// Initialize vote statuses
-	for _, voteStatus := range genState.VoteStatuses {
-		// Store vote status (keeper method would need to be implemented)
-		// keeper.SetVoteStatus(ctx, voteStatus)
-	}
-	
+	// TODO: Implement when keeper methods are available
+	_ = genState.VoteStatuses
+
 	// Initialize confirmed transfers
-	for _, transfer := range genState.ConfirmedTransfers {
-		// Store confirmed transfer (keeper method would need to be implemented)
-		// keeper.SetConfirmedTransfer(ctx, transfer.TxHash, transfer)
-	}
-	
+	// TODO: Implement when keeper methods are available
+	_ = genState.ConfirmedTransfers
+
 	// Set parameters (would need parameter store implementation)
-	// keeper.SetParams(ctx, genState.Params)
+	// k.SetParams(ctx, genState.Params)
+	_ = ctx
+	_ = k
 }
 
 // ExportGenesis returns the oracle module's exported genesis.
@@ -88,6 +88,3 @@ func ExportGenesis(ctx sdk.Context, keeper keeper.Keeper) *GenesisState {
 	
 	return genesis
 }
-
-// Import fmt for error formatting
-import "fmt"

@@ -1,15 +1,13 @@
 package keeper
 
 import (
-	"crypto/ecdsa"
 	"crypto/sha256"
 	"fmt"
-	"time"
 
-	"github.com/cometbft/cometbft/libs/log"
+	"cosmossdk.io/log"
+	storetypes "cosmossdk.io/store/types"
 	"github.com/cosmos/cosmos-sdk/codec"
 	"github.com/cosmos/cosmos-sdk/crypto/keys/secp256k1"
-	storetypes "cosmossdk.io/store/types"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	paramtypes "github.com/cosmos/cosmos-sdk/x/params/types"
 	"github.com/ethereum/go-ethereum/crypto"
@@ -57,6 +55,11 @@ func (k *Keeper) SetNettingKeeper(nettingKeeper types.NettingKeeper) {
 // Logger returns a module-specific logger.
 func (k Keeper) Logger(ctx sdk.Context) log.Logger {
 	return ctx.Logger().With("module", fmt.Sprintf("x/%s", types.ModuleName))
+}
+
+// GetStoreKey returns the store key
+func (k Keeper) GetStoreKey() storetypes.StoreKey {
+	return k.storeKey
 }
 
 // SubmitVote submits a validator vote on a transfer event
@@ -223,8 +226,8 @@ func (k Keeper) IsActiveValidator(ctx sdk.Context, validator string) bool {
 		return false
 	}
 
-	val, found := k.stakingKeeper.GetValidator(ctx, valAddr)
-	if !found {
+	val, err := k.stakingKeeper.GetValidator(ctx, valAddr)
+	if err != nil {
 		return false
 	}
 
@@ -238,8 +241,8 @@ func (k Keeper) GetValidatorPubKey(ctx sdk.Context, validator string) ([]byte, b
 		return nil, false
 	}
 
-	val, found := k.stakingKeeper.GetValidator(ctx, valAddr)
-	if !found {
+	val, err := k.stakingKeeper.GetValidator(ctx, valAddr)
+	if err != nil {
 		return nil, false
 	}
 
@@ -396,7 +399,10 @@ func (k Keeper) setConfirmedTransfer(ctx sdk.Context, txHash string, eventData c
 
 func (k Keeper) getConsensusThreshold(ctx sdk.Context) int {
 	// Get all bonded validators
-	validators := k.stakingKeeper.GetBondedValidatorsByPower(ctx)
+	validators, err := k.stakingKeeper.GetBondedValidatorsByPower(ctx)
+	if err != nil {
+		return 1 // Default minimum threshold
+	}
 	totalValidators := len(validators)
 
 	// Calculate 2/3 threshold
@@ -493,7 +499,7 @@ func (k Keeper) GetAllVoteStatuses(ctx sdk.Context) []commontypes.VoteStatus {
 	store := ctx.KVStore(k.storeKey)
 
 	var statuses []commontypes.VoteStatus
-	iterator := sdk.KVStorePrefixIterator(store, types.VoteStatusKeyPrefix)
+	iterator := storetypes.KVStorePrefixIterator(store, types.VoteStatusKeyPrefix)
 	defer iterator.Close()
 
 	for ; iterator.Valid(); iterator.Next() {
