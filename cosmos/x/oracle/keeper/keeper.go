@@ -183,6 +183,12 @@ func (k Keeper) ConfirmTransfer(ctx sdk.Context, txHash string) error {
 	// Store confirmed transfer
 	k.setConfirmedTransfer(ctx, txHash, eventData)
 
+	// Log transfer confirmation (Requirement 7.1)
+	if err := k.LogTransferConfirmed(ctx, txHash, eventData); err != nil {
+		k.Logger(ctx).Error("failed to log transfer confirmation", "error", err)
+		// Don't fail the transfer for logging errors
+	}
+
 	// Trigger credit token issuance through netting keeper
 	if k.nettingKeeper != nil {
 		creditToken := commontypes.CreditToken{
@@ -529,4 +535,215 @@ func (k Keeper) GetAllVoteStatuses(ctx sdk.Context) []commontypes.VoteStatus {
 	}
 
 	return statuses
+}
+
+// =============================================================================
+// Audit Logging System (Requirement 7.1 - 7.5)
+// =============================================================================
+
+// SaveAuditLog saves an audit log entry with automatic ID assignment
+// Requirement 7.1: 거래 로깅 시스템
+func (k Keeper) SaveAuditLog(ctx sdk.Context, log commontypes.AuditLog) (uint64, error) {
+	store := ctx.KVStore(k.storeKey)
+
+	// Get and increment the counter
+	id := k.getNextAuditLogID(ctx)
+	log.ID = id
+	log.BlockHeight = ctx.BlockHeight()
+
+	if log.Timestamp == 0 {
+		log.Timestamp = ctx.BlockTime().Unix()
+	}
+
+	// Marshal the log
+	bz := k.cdc.MustMarshal(&log)
+
+	// Store by ID (primary index)
+	store.Set(types.GetAuditLogKey(id), bz)
+
+	// Store by time (secondary index for time range queries)
+	store.Set(types.GetAuditLogByTimeKey(log.Timestamp, id), bz)
+
+	// Store by event type (secondary index for type filtering)
+	store.Set(types.GetAuditLogByTypeKey(log.EventType, id), bz)
+
+	k.Logger(ctx).Debug("audit log saved",
+		"id", id,
+		"event_type", log.EventType,
+		"tx_hash", log.TxHash,
+	)
+
+	return id, nil
+}
+
+// getNextAuditLogID gets and increments the audit log counter
+func (k Keeper) getNextAuditLogID(ctx sdk.Context) uint64 {
+	store := ctx.KVStore(k.storeKey)
+	bz := store.Get(types.AuditLogCounterKey)
+
+	var counter uint64 = 1
+	if bz != nil {
+		counter = uint64(bz[0])<<56 | uint64(bz[1])<<48 | uint64(bz[2])<<40 | uint64(bz[3])<<32 |
+			uint64(bz[4])<<24 | uint64(bz[5])<<16 | uint64(bz[6])<<8 | uint64(bz[7])
+		counter++
+	}
+
+	// Store incremented counter
+	newBz := make([]byte, 8)
+	newBz[0] = byte(counter >> 56)
+	newBz[1] = byte(counter >> 48)
+	newBz[2] = byte(counter >> 40)
+	newBz[3] = byte(counter >> 32)
+	newBz[4] = byte(counter >> 24)
+	newBz[5] = byte(counter >> 16)
+	newBz[6] = byte(counter >> 8)
+	newBz[7] = byte(counter)
+	store.Set(types.AuditLogCounterKey, newBz)
+
+	return counter
+}
+
+// GetAuditLog retrieves an audit log by ID
+func (k Keeper) GetAuditLog(ctx sdk.Context, id uint64) (commontypes.AuditLog, bool) {
+	store := ctx.KVStore(k.storeKey)
+	bz := store.Get(types.GetAuditLogKey(id))
+	if bz == nil {
+		return commontypes.AuditLog{}, false
+	}
+
+	var log commontypes.AuditLog
+	k.cdc.MustUnmarshal(bz, &log)
+	return log, true
+}
+
+// GetAuditLogsByTimeRange retrieves audit logs within a time range
+// Requirement 7.5: 감사 쿼리 API
+func (k Keeper) GetAuditLogsByTimeRange(ctx sdk.Context, startTime, endTime int64) []commontypes.AuditLog {
+	store := ctx.KVStore(k.storeKey)
+	logs := make([]commontypes.AuditLog, 0)
+
+	// Create iterator starting from startTime
+	startKey := types.GetAuditLogTimeRangePrefix(startTime)
+	endKey := types.GetAuditLogTimeRangePrefix(endTime + 1) // +1 to include endTime
+
+	iterator := store.Iterator(startKey, endKey)
+	defer iterator.Close()
+
+	for ; iterator.Valid(); iterator.Next() {
+		var log commontypes.AuditLog
+		k.cdc.MustUnmarshal(iterator.Value(), &log)
+		logs = append(logs, log)
+	}
+
+	return logs
+}
+
+// GetAuditLogsByEventType retrieves audit logs by event type
+// Requirement 7.5: 감사 쿼리 API
+func (k Keeper) GetAuditLogsByEventType(ctx sdk.Context, eventType string) []commontypes.AuditLog {
+	store := ctx.KVStore(k.storeKey)
+	logs := make([]commontypes.AuditLog, 0)
+
+	prefix := types.GetAuditLogByTypePrefix(eventType)
+	iterator := storetypes.KVStorePrefixIterator(store, prefix)
+	defer iterator.Close()
+
+	for ; iterator.Valid(); iterator.Next() {
+		var log commontypes.AuditLog
+		k.cdc.MustUnmarshal(iterator.Value(), &log)
+		logs = append(logs, log)
+	}
+
+	return logs
+}
+
+// GetAuditLogsByTxHash retrieves audit logs by transaction hash
+// Requirement 7.3: 추적성 이벤트
+func (k Keeper) GetAuditLogsByTxHash(ctx sdk.Context, txHash string) []commontypes.AuditLog {
+	store := ctx.KVStore(k.storeKey)
+	logs := make([]commontypes.AuditLog, 0)
+
+	// Iterate all audit logs and filter by txHash
+	iterator := storetypes.KVStorePrefixIterator(store, types.AuditLogKeyPrefix)
+	defer iterator.Close()
+
+	for ; iterator.Valid(); iterator.Next() {
+		var log commontypes.AuditLog
+		k.cdc.MustUnmarshal(iterator.Value(), &log)
+		if log.TxHash == txHash {
+			logs = append(logs, log)
+		}
+	}
+
+	return logs
+}
+
+// GetAllAuditLogs retrieves all audit logs
+func (k Keeper) GetAllAuditLogs(ctx sdk.Context) []commontypes.AuditLog {
+	store := ctx.KVStore(k.storeKey)
+	logs := make([]commontypes.AuditLog, 0)
+
+	iterator := storetypes.KVStorePrefixIterator(store, types.AuditLogKeyPrefix)
+	defer iterator.Close()
+
+	for ; iterator.Valid(); iterator.Next() {
+		var log commontypes.AuditLog
+		k.cdc.MustUnmarshal(iterator.Value(), &log)
+		logs = append(logs, log)
+	}
+
+	return logs
+}
+
+// LogTransferConfirmed logs a transfer confirmation event
+// Requirement 7.1: 거래 로깅
+func (k Keeper) LogTransferConfirmed(ctx sdk.Context, txHash string, eventData commontypes.TransferEvent) error {
+	log := commontypes.AuditLog{
+		EventType: commontypes.EventTypeTransferConfirmed,
+		TxHash:    txHash,
+		Timestamp: ctx.BlockTime().Unix(),
+		Details: map[string]string{
+			"sender":       eventData.Sender,
+			"recipient":    eventData.Recipient,
+			"amount":       eventData.Amount.String(),
+			"source_chain": eventData.SourceChain,
+			"dest_chain":   eventData.DestChain,
+			"nonce":        fmt.Sprintf("%d", eventData.Nonce),
+		},
+	}
+
+	_, err := k.SaveAuditLog(ctx, log)
+	return err
+}
+
+// LogCreditIssued logs a credit token issuance event
+// Requirement 7.1: 거래 로깅
+func (k Keeper) LogCreditIssued(ctx sdk.Context, credit commontypes.CreditToken) error {
+	log := commontypes.AuditLog{
+		EventType: commontypes.EventTypeCreditIssued,
+		TxHash:    credit.OriginTx,
+		Timestamp: ctx.BlockTime().Unix(),
+		Details: map[string]string{
+			"denom":       credit.Denom,
+			"issuer_bank": credit.IssuerBank,
+			"holder_bank": credit.HolderBank,
+			"amount":      credit.Amount.String(),
+		},
+	}
+
+	_, err := k.SaveAuditLog(ctx, log)
+	return err
+}
+
+// GetAuditLogCount returns the total count of audit logs
+func (k Keeper) GetAuditLogCount(ctx sdk.Context) uint64 {
+	store := ctx.KVStore(k.storeKey)
+	bz := store.Get(types.AuditLogCounterKey)
+
+	if bz == nil {
+		return 0
+	}
+
+	return uint64(bz[0])<<56 | uint64(bz[1])<<48 | uint64(bz[2])<<40 | uint64(bz[3])<<32 |
+		uint64(bz[4])<<24 | uint64(bz[5])<<16 | uint64(bz[6])<<8 | uint64(bz[7])
 }

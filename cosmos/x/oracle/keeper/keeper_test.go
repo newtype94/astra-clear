@@ -333,3 +333,315 @@ var _ = require.New(nil)
 var _ = log.NewNopLogger()
 var _ = math.ZeroInt()
 var _ = runtime.NewKVStoreService(nil)
+
+// =============================================================================
+// **Feature: interbank-netting-engine, Property 14: 감사 로깅**
+// **검증: 요구사항 7.1, 7.2, 7.3, 7.5**
+// =============================================================================
+
+// TestProperty_AuditLog_SaveAndRetrieve tests that audit logs are correctly saved and retrieved
+func TestProperty_AuditLog_SaveAndRetrieve(t *testing.T) {
+	properties := testhelpers.NewPropertyTester(t)
+
+	properties.Property("audit logs can be saved and retrieved by ID", prop.ForAll(
+		func(eventType string, txHash string) bool {
+			ctx, oracleKeeper, _ := setupTestEnvironment(t, 3)
+
+			// Create audit log
+			auditLog := types.AuditLog{
+				EventType: eventType,
+				TxHash:    txHash,
+				Timestamp: ctx.BlockTime().Unix(),
+				Details: map[string]string{
+					"test_key": "test_value",
+				},
+			}
+
+			// Save audit log
+			id, err := oracleKeeper.SaveAuditLog(ctx, auditLog)
+			if err != nil {
+				return false
+			}
+
+			// Retrieve audit log
+			retrieved, found := oracleKeeper.GetAuditLog(ctx, id)
+			if !found {
+				return false
+			}
+
+			// Verify fields match
+			if retrieved.ID != id {
+				return false
+			}
+			if retrieved.EventType != eventType {
+				return false
+			}
+			if retrieved.TxHash != txHash {
+				return false
+			}
+			if retrieved.Details["test_key"] != "test_value" {
+				return false
+			}
+
+			return true
+		},
+		gen.AnyString(),
+		gen.AnyString(),
+	))
+
+	properties.TestingRun(t)
+}
+
+// TestProperty_AuditLog_TimeRangeQuery tests time range queries for audit logs
+func TestProperty_AuditLog_TimeRangeQuery(t *testing.T) {
+	properties := testhelpers.NewPropertyTester(t)
+
+	properties.Property("audit logs can be queried by time range", prop.ForAll(
+		func(logCount int) bool {
+			ctx, oracleKeeper, _ := setupTestEnvironment(t, 3)
+
+			if logCount <= 0 {
+				logCount = 1
+			}
+			if logCount > 10 {
+				logCount = 10
+			}
+
+			// Create multiple audit logs with different timestamps
+			baseTime := ctx.BlockTime().Unix()
+			var savedIDs []uint64
+
+			for i := 0; i < logCount; i++ {
+				auditLog := types.AuditLog{
+					EventType: types.EventTypeTransferConfirmed,
+					TxHash:    "tx-" + string(rune(i+65)), // tx-A, tx-B, etc.
+					Timestamp: baseTime + int64(i*10),    // 10 second intervals
+					Details:   map[string]string{"index": string(rune(i + 48))},
+				}
+
+				id, err := oracleKeeper.SaveAuditLog(ctx, auditLog)
+				if err != nil {
+					return false
+				}
+				savedIDs = append(savedIDs, id)
+			}
+
+			// Query all logs
+			allLogs := oracleKeeper.GetAllAuditLogs(ctx)
+			if len(allLogs) != logCount {
+				return false
+			}
+
+			// Query by time range - should get all logs
+			startTime := baseTime - 1
+			endTime := baseTime + int64(logCount*10) + 1
+			timeRangeLogs := oracleKeeper.GetAuditLogsByTimeRange(ctx, startTime, endTime)
+			if len(timeRangeLogs) != logCount {
+				return false
+			}
+
+			return true
+		},
+		gen.IntRange(1, 10),
+	))
+
+	properties.TestingRun(t)
+}
+
+// TestProperty_AuditLog_TypeFilter tests event type filtering for audit logs
+func TestProperty_AuditLog_TypeFilter(t *testing.T) {
+	properties := testhelpers.NewPropertyTester(t)
+
+	properties.Property("audit logs can be filtered by event type", prop.ForAll(
+		func(transferCount, creditCount int) bool {
+			ctx, oracleKeeper, _ := setupTestEnvironment(t, 3)
+
+			// Normalize counts
+			if transferCount < 0 {
+				transferCount = 0
+			}
+			if transferCount > 5 {
+				transferCount = 5
+			}
+			if creditCount < 0 {
+				creditCount = 0
+			}
+			if creditCount > 5 {
+				creditCount = 5
+			}
+
+			// Create transfer confirmed logs
+			for i := 0; i < transferCount; i++ {
+				auditLog := types.AuditLog{
+					EventType: types.EventTypeTransferConfirmed,
+					TxHash:    "transfer-tx-" + string(rune(i+65)),
+					Timestamp: ctx.BlockTime().Unix(),
+					Details:   map[string]string{},
+				}
+				_, err := oracleKeeper.SaveAuditLog(ctx, auditLog)
+				if err != nil {
+					return false
+				}
+			}
+
+			// Create credit issued logs
+			for i := 0; i < creditCount; i++ {
+				auditLog := types.AuditLog{
+					EventType: types.EventTypeCreditIssued,
+					TxHash:    "credit-tx-" + string(rune(i+65)),
+					Timestamp: ctx.BlockTime().Unix(),
+					Details:   map[string]string{},
+				}
+				_, err := oracleKeeper.SaveAuditLog(ctx, auditLog)
+				if err != nil {
+					return false
+				}
+			}
+
+			// Filter by transfer confirmed type
+			transferLogs := oracleKeeper.GetAuditLogsByEventType(ctx, types.EventTypeTransferConfirmed)
+			if len(transferLogs) != transferCount {
+				return false
+			}
+
+			// Filter by credit issued type
+			creditLogs := oracleKeeper.GetAuditLogsByEventType(ctx, types.EventTypeCreditIssued)
+			if len(creditLogs) != creditCount {
+				return false
+			}
+
+			// Verify total count
+			allLogs := oracleKeeper.GetAllAuditLogs(ctx)
+			if len(allLogs) != transferCount+creditCount {
+				return false
+			}
+
+			return true
+		},
+		gen.IntRange(0, 5),
+		gen.IntRange(0, 5),
+	))
+
+	properties.TestingRun(t)
+}
+
+// TestProperty_AuditLog_TxHashTraceability tests tx hash traceability (Requirement 7.3)
+func TestProperty_AuditLog_TxHashTraceability(t *testing.T) {
+	properties := testhelpers.NewPropertyTester(t)
+
+	properties.Property("audit logs can be traced by transaction hash", prop.ForAll(
+		func(txHash string) bool {
+			ctx, oracleKeeper, _ := setupTestEnvironment(t, 3)
+
+			if txHash == "" {
+				txHash = "test-tx-hash"
+			}
+
+			// Create multiple logs with same txHash (e.g., transfer confirmed + credit issued)
+			log1 := types.AuditLog{
+				EventType: types.EventTypeTransferConfirmed,
+				TxHash:    txHash,
+				Timestamp: ctx.BlockTime().Unix(),
+				Details:   map[string]string{"phase": "1"},
+			}
+			_, err := oracleKeeper.SaveAuditLog(ctx, log1)
+			if err != nil {
+				return false
+			}
+
+			log2 := types.AuditLog{
+				EventType: types.EventTypeCreditIssued,
+				TxHash:    txHash,
+				Timestamp: ctx.BlockTime().Unix() + 1,
+				Details:   map[string]string{"phase": "2"},
+			}
+			_, err = oracleKeeper.SaveAuditLog(ctx, log2)
+			if err != nil {
+				return false
+			}
+
+			// Create a log with different txHash
+			log3 := types.AuditLog{
+				EventType: types.EventTypeNettingCompleted,
+				TxHash:    "other-tx-hash",
+				Timestamp: ctx.BlockTime().Unix() + 2,
+				Details:   map[string]string{"phase": "3"},
+			}
+			_, err = oracleKeeper.SaveAuditLog(ctx, log3)
+			if err != nil {
+				return false
+			}
+
+			// Query by txHash
+			logs := oracleKeeper.GetAuditLogsByTxHash(ctx, txHash)
+
+			// Should find exactly 2 logs with the same txHash
+			if len(logs) != 2 {
+				return false
+			}
+
+			// Verify all logs have the correct txHash
+			for _, log := range logs {
+				if log.TxHash != txHash {
+					return false
+				}
+			}
+
+			return true
+		},
+		gen.AnyString(),
+	))
+
+	properties.TestingRun(t)
+}
+
+// TestProperty_AuditLog_AutoIncrementID tests that audit log IDs auto-increment
+func TestProperty_AuditLog_AutoIncrementID(t *testing.T) {
+	properties := testhelpers.NewPropertyTester(t)
+
+	properties.Property("audit log IDs auto-increment correctly", prop.ForAll(
+		func(logCount int) bool {
+			ctx, oracleKeeper, _ := setupTestEnvironment(t, 3)
+
+			if logCount <= 0 {
+				logCount = 1
+			}
+			if logCount > 20 {
+				logCount = 20
+			}
+
+			var previousID uint64 = 0
+
+			for i := 0; i < logCount; i++ {
+				auditLog := types.AuditLog{
+					EventType: types.EventTypeTransferConfirmed,
+					TxHash:    "tx-" + string(rune(i+65)),
+					Timestamp: ctx.BlockTime().Unix(),
+					Details:   map[string]string{},
+				}
+
+				id, err := oracleKeeper.SaveAuditLog(ctx, auditLog)
+				if err != nil {
+					return false
+				}
+
+				// ID should be greater than previous
+				if id <= previousID {
+					return false
+				}
+				previousID = id
+			}
+
+			// Count should match
+			count := oracleKeeper.GetAuditLogCount(ctx)
+			if count != uint64(logCount) {
+				return false
+			}
+
+			return true
+		},
+		gen.IntRange(1, 20),
+	))
+
+	properties.TestingRun(t)
+}

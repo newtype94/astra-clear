@@ -24,6 +24,7 @@ type Keeper struct {
 
 	bankKeeper    types.BankKeeper
 	accountKeeper types.AccountKeeper
+	oracleKeeper  nettingtypes.OracleKeeper
 }
 
 // NewKeeper creates a new netting Keeper instance
@@ -50,6 +51,11 @@ func (k Keeper) Logger(ctx sdk.Context) log.Logger {
 	return ctx.Logger().With("module", fmt.Sprintf("x/%s", nettingtypes.ModuleName))
 }
 
+// SetOracleKeeper sets the oracle keeper (to avoid circular dependency)
+func (k *Keeper) SetOracleKeeper(oracleKeeper nettingtypes.OracleKeeper) {
+	k.oracleKeeper = oracleKeeper
+}
+
 // IssueCreditToken issues a new credit token
 func (k Keeper) IssueCreditToken(ctx sdk.Context, token types.CreditToken) error {
 	// Validate credit token
@@ -67,6 +73,14 @@ func (k Keeper) IssueCreditToken(ctx sdk.Context, token types.CreditToken) error
 
 	// Update credit balance for holder bank
 	k.addCreditBalance(ctx, token.HolderBank, token.Denom, token.Amount)
+
+	// Log credit issuance (Requirement 7.1)
+	if k.oracleKeeper != nil {
+		if err := k.oracleKeeper.LogCreditIssued(ctx, token); err != nil {
+			k.Logger(ctx).Error("failed to log credit issuance", "error", err)
+			// Don't fail for logging errors
+		}
+	}
 
 	// Emit credit issued event
 	ctx.EventManager().EmitEvent(
@@ -340,6 +354,35 @@ func (k Keeper) ExecuteNetting(ctx sdk.Context, pairs []types.BankPair) error {
 
 	// Store netting cycle
 	k.setNettingCycle(ctx, cycle)
+
+	// Log netting completion (Requirement 7.2)
+	if k.oracleKeeper != nil {
+		// Calculate total netted amount
+		totalNetted := math.ZeroInt()
+		for _, pair := range pairs {
+			minAmount := pair.AmountA
+			if pair.AmountB.LT(minAmount) {
+				minAmount = pair.AmountB
+			}
+			totalNetted = totalNetted.Add(minAmount)
+		}
+
+		auditLog := types.AuditLog{
+			EventType: types.EventTypeNettingCompleted,
+			Timestamp: ctx.BlockTime().Unix(),
+			Details: map[string]string{
+				"cycle_id":      strconv.FormatUint(cycleID, 10),
+				"pair_count":    strconv.Itoa(len(pairs)),
+				"total_netted":  totalNetted.String(),
+				"start_time":    strconv.FormatInt(cycle.StartTime, 10),
+				"end_time":      strconv.FormatInt(cycle.EndTime, 10),
+			},
+		}
+		if _, err := k.oracleKeeper.SaveAuditLog(ctx, auditLog); err != nil {
+			k.Logger(ctx).Error("failed to log netting completion", "error", err)
+			// Don't fail for logging errors
+		}
+	}
 
 	// Emit netting completed event
 	ctx.EventManager().EmitEvent(

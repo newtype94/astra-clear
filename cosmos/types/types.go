@@ -187,6 +187,10 @@ type AuditLog struct {
 	BlockHeight int64             `protobuf:"varint,6,opt,name=block_height,json=blockHeight,proto3" json:"block_height"`
 }
 
+func (al *AuditLog) ProtoMessage()  {}
+func (al *AuditLog) Reset()         { *al = AuditLog{} }
+func (al *AuditLog) String() string { return fmt.Sprintf("AuditLog{ID: %d, EventType: %s}", al.ID, al.EventType) }
+
 // EventType constants for audit logging
 const (
 	EventTypeTransferInitiated = "transfer_initiated"

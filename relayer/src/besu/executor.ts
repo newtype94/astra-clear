@@ -12,11 +12,15 @@ export class BesuExecutor {
   private executor: Contract;
   private logger: Logger;
 
-  // Executor contract ABI (minimal, only the functions we need)
+  // Executor contract ABI (matches Executor.sol contract)
   private static readonly EXECUTOR_ABI = [
-    'function executeMintCommand(bytes32 commandId, address recipient, uint256 amount, bytes[] calldata signatures) external returns (bool)',
-    'function isCommandExecuted(bytes32 commandId) external view returns (bool)',
-    'event CommandExecuted(bytes32 indexed commandId, address indexed recipient, uint256 amount)',
+    'function executeMint(bytes32 commandId, address recipient, uint256 amount, bytes[] calldata signatures) external',
+    'function isCommandProcessed(bytes32 commandId) external view returns (bool)',
+    'function getMessageHash(bytes32 commandId, address recipient, uint256 amount) external view returns (bytes32)',
+    'function threshold() external view returns (uint256)',
+    'function getValidatorCount() external view returns (uint256)',
+    'event MintExecuted(bytes32 indexed commandId, address indexed recipient, uint256 amount, uint256 timestamp)',
+    'event MintRejected(bytes32 indexed commandId, string reason)',
   ];
 
   constructor(
@@ -69,7 +73,7 @@ export class BesuExecutor {
       const signaturesBytes = this.encodeSignatures(command.signatures);
 
       // Estimate gas
-      const gasEstimate = await this.executor.executeMintCommand.estimateGas(
+      const gasEstimate = await this.executor.executeMint.estimateGas(
         commandIdBytes,
         command.recipient,
         command.amount,
@@ -84,7 +88,7 @@ export class BesuExecutor {
       const gasPrice = feeData.gasPrice || ethers.parseUnits('20', 'gwei');
 
       // Execute the mint command
-      const tx = await this.executor.executeMintCommand(
+      const tx = await this.executor.executeMint(
         commandIdBytes,
         command.recipient,
         command.amount,
@@ -132,7 +136,7 @@ export class BesuExecutor {
   async isCommandExecuted(commandId: string): Promise<boolean> {
     try {
       const commandIdBytes = ethers.id(commandId);
-      const isExecuted = await this.executor.isCommandExecuted(commandIdBytes);
+      const isExecuted = await this.executor.isCommandProcessed(commandIdBytes);
       return isExecuted;
     } catch (error) {
       this.logger.error('Failed to check command execution status', {
