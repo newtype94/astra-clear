@@ -1,440 +1,180 @@
-# astra-clear
+# Astra Clear
 
-# 🌌 astra-clear
-
-**astra-clear**는 허가형 컨소시움 환경에서 스테이블코인 기반 결제를 실험하기 위한 **Interbank Netting & Clearing Engine POC**입니다.
-
-이 프로젝트의 핵심 아이디어는 단순합니다.
-
-> **사용자는 즉시 지급을 받고, 은행 간 정산은 나중에, 최소한으로 처리한다.**
-
-Cosmos SDK를 중심 허브로 사용하여 은행 간 부채(IOU)를 토큰화하고 상계(Netting)함으로써, 실제 자금 이동을 최대한 압축합니다.
+Interbank Netting & Clearing Engine for Permissioned Stablecoin Networks
 
 ---
 
-## ✨ What This Project Is (and Is Not)
+## Overview
 
-### ✔ This is
+Astra Clear는 허가형 금융기관 컨소시엄 환경에서 은행 간 결제를 효율화하는 청산 엔진이다. 핵심 개념은 단순하다:
 
-* 개인 사이드 프로젝트이자 기술 **POC (Proof of Concept)**
-* **100% 담보 스테이블코인** 환경 가정
-* **완전 허가형 컨소시움** (신뢰된 금융기관만 참여)
-* 실시간 사용자 지급 + 비동기 은행 간 정산 구조 실험
+> **사용자에게는 즉시 지급, 은행 간 정산은 Netting으로 최소화**
 
-### ✖ This is NOT
-
-* 프로덕션 레디 결제 네트워크
-* 무담보 DeFi 프로토콜
-* 파산, 디폴트, 리스크 엔진을 포함한 완전한 금융 시스템
+기존 결제 시스템은 모든 거래를 개별 정산한다. Astra Clear는 은행 간 채권/채무를 토큰화하고, 상계(Netting)를 통해 실제 자금 이동을 압축한다.
 
 ---
 
-## 🧠 Core Concept
+## Problem Statement
 
-### 1. Issuer-based Credit Token (IOU)
+현행 은행 간 결제 구조의 비효율:
 
-각 참여 은행은 Cosmos Hub 상에서 자신의 신용을 나타내는 부채 토큰을 발행합니다.
-
-* 형식: `cred-{BankID}`
-* 의미: "이 은행이 다른 은행에게 갚아야 할 돈"
-* 가치: 1 `cred` = 1 Stablecoin Unit
-
-중앙 유동성 풀은 존재하지 않으며, 모든 부채는 **발행자 기준(IOU)** 으로 명확히 분리됩니다.
-
----
-
-### 2. Real-time User Payment, Deferred Settlement
-
-* 송금인 체인에서는 토큰이 **Burn**
-* 수신인 체인에서는 토큰이 **즉시 Mint**
-* 은행 간 채권/채무는 Cosmos Hub에 기록
-* Netting은 백그라운드에서 주기적으로 실행
-
-사용자는 기다리지 않고, 은행은 효율적으로 정산합니다.
+| 문제 | 설명 |
+|------|------|
+| 개별 정산 | 모든 송금건이 RTGS/대외계로 개별 처리 |
+| 유동성 잠김 | 일중 유동성 확보를 위한 담보 묶임 |
+| 지연 | T+1 또는 T+2 정산 사이클 |
+| 비용 | 건당 수수료, 노스트로 계좌 유지비용 |
 
 ---
 
-### 3. Netting via Token Burn
-
-상호 보유 중인 `cred` 토큰은 주기적으로 상계됩니다.
-
-예시:
-
-* Bank A → Bank B: 100
-* Bank B → Bank A: 30
-
-결과:
-
-* `cred-A` 30 Burn
-* `cred-B` 30 Burn
-* 순 부채: Bank A → Bank B = 70
-
----
-
-## 🏗 Architecture Overview
+## Solution
 
 ```
-┌─────────────┐        Events        ┌──────────────┐
-│  Besu A     │ ──────────────────▶ │              │
-│ (Source)    │                     │              │
-└─────────────┘                     │              │
-                                     │   Cosmos     │
-┌─────────────┐        Commands      │     Hub      │
-│  Besu B     │ ◀────────────────── │              │
-│ (Destination│                     │              │
-└─────────────┘                     └──────────────┘
+┌─────────────────────────────────────────────────────────────────┐
+│                      Astra Clear Architecture                    │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                   │
+│   Bank A Network          Cosmos Hub           Bank B Network    │
+│   (Hyperledger Besu)      (Coordinator)        (Hyperledger Besu)│
+│                                                                   │
+│   ┌──────────┐           ┌───────────┐         ┌──────────┐     │
+│   │ Gateway  │──Events──▶│  Oracle   │         │ Gateway  │     │
+│   │ Contract │           │  Module   │         │ Contract │     │
+│   └──────────┘           └─────┬─────┘         └──────────┘     │
+│                                │                                  │
+│   ┌──────────┐           ┌─────▼─────┐         ┌──────────┐     │
+│   │ Executor │◀─Commands─│  Netting  │─────────│ Executor │     │
+│   │ Contract │           │  Module   │         │ Contract │     │
+│   └──────────┘           └───────────┘         └──────────┘     │
+│                                                                   │
+└─────────────────────────────────────────────────────────────────┘
 ```
 
-### Components
+**동작 흐름:**
 
-* **Cosmos SDK Hub**
-
-  * `x/oracle`: 외부 체인 이벤트 투표 및 확정
-  * `x/netting`: cred 토큰 발행/소각 및 상계 로직
-  * `x/multisig`: ECDSA 기반 서명 관리
-
-* **Hyperledger Besu**
-
-  * `Gateway.sol`: Source 체인 Burn + 이벤트 방출
-  * `Executor.sol`: Destination 체인 Mint + 서명 검증
-
-* **Relayer**
-
-  * Besu ↔ Cosmos 간 이벤트/명령 전달
-  * 비즈니스 로직 없음 (stateless)
+1. 사용자가 Bank A에서 Bank B 수신자에게 송금 요청
+2. Bank A의 Gateway에서 토큰 Burn + 이벤트 발생
+3. Validator들이 이벤트를 감지하고 Cosmos Hub에 투표
+4. 2/3 합의 도달 시 Bank B로 Mint 명령 서명
+5. Bank B의 Executor가 수신자에게 즉시 Mint
+6. 은행 간 채무는 Cosmos Hub에서 Netting 처리
 
 ---
 
-## 🔄 End-to-End Flow (Simplified)
+## Key Features
 
-1. 사용자가 Source 체인에서 송금 요청
-2. 토큰 Burn + 이벤트 발생
-3. Cosmos Hub에서 Validator 합의
-4. 수신 체인으로 Mint 명령 서명
-5. Destination 체인에서 즉시 Mint
-6. 은행 간 부채는 Cosmos에서 Netting
+| 기능 | 설명 |
+|------|------|
+| **Bilateral Netting** | 양방향 채무 상계로 정산 건수 감소 |
+| **IOU Token Model** | 발행자 기준 부채 토큰 (`cred-{BankID}`) |
+| **Oracle Consensus** | BFT 기반 크로스체인 이벤트 검증 |
+| **Multi-Signature Execution** | 2/3 Validator 서명으로 Mint 명령 실행 |
+| **Atomic Cross-Chain Transfer** | 사용자 관점 즉시 송금 완료 |
 
 ---
 
-## 📦 Repository Structure (Planned)
+## Tech Stack
+
+| Layer | Technology |
+|-------|------------|
+| Settlement Hub | Cosmos SDK (Go) |
+| Bank Networks | Hyperledger Besu (EVM) |
+| Smart Contracts | Solidity 0.8.24 |
+| Relayer | TypeScript |
+| Signing | ECDSA (secp256k1) |
+
+---
+
+## Repository Structure
 
 ```
 astra-clear/
- ├─ cosmos/
- │   ├─ x/oracle/
- │   ├─ x/netting/
- │   └─ x/multisig/
- ├─ contracts/
- │   ├─ gateway.sol
- │   └─ executor.sol
- ├─ relayer/
- └─ docs/
+├── cosmos/                 # Cosmos SDK Hub
+│   ├── x/oracle/          # Cross-chain event voting
+│   ├── x/netting/         # Credit token & netting logic
+│   └── x/multisig/        # Validator signature aggregation
+├── contracts/             # Solidity smart contracts
+│   ├── Gateway.sol        # Source chain burn & event
+│   ├── Executor.sol       # Dest chain signature verify & mint
+│   └── BankToken.sol      # ERC20 stablecoin implementation
+├── relayer/               # Event relay service
+└── docs/                  # Documentation
 ```
 
 ---
 
-## 🎯 MVP Scope
+## Quick Start
 
-### Included
-
-* cred 토큰 발행 / 소각
-* 단순 양방향 Netting
-* Oracle 투표 기반 이벤트 확정
-* ECDSA Multisig Mint 명령 실행
-
-### Explicitly Out of Scope
-
-* 신용 한도 관리
-* 디폴트 / 파산 처리
-* 이자, FX, 수수료 모델
-* 규제 및 법적 프레임워크
-
----
-
-## 🚧 Status
-
-> 현재: **Core Modules Implementation 완료**
-
-Cosmos Hub의 핵심 모듈(oracle, netting, multisig)이 구현되었으며, 속성 기반 테스트가 포함되어 있습니다.
-
----
-
-## 🛠 환경 설정 및 실행 방법
-
-### 필수 요구사항
-
-#### 1. Go 설치 (v1.21+)
 ```bash
-# Windows (Chocolatey 사용)
-choco install golang
-
-# macOS (Homebrew 사용)
-brew install go
-
-# Linux (Ubuntu/Debian)
-sudo apt update
-sudo apt install golang-go
-
-# 설치 확인
-go version
-```
-
-#### 2. Node.js 설치 (v18+)
-```bash
-# Windows (Chocolatey 사용)
-choco install nodejs
-
-# macOS (Homebrew 사용)
-brew install node
-
-# Linux (Ubuntu/Debian)
-curl -fsSL https://deb.nodesource.com/setup_18.x | sudo -E bash -
-sudo apt-get install -y nodejs
-
-# 설치 확인
-node --version
-npm --version
-```
-
-#### 3. Docker 설치 (Besu 네트워크용)
-```bash
-# Windows: Docker Desktop 다운로드 및 설치
-# https://www.docker.com/products/docker-desktop
-
-# macOS (Homebrew 사용)
-brew install --cask docker
-
-# Linux (Ubuntu/Debian)
-sudo apt update
-sudo apt install docker.io docker-compose
-
-# 설치 확인
-docker --version
-docker-compose --version
-```
-
-### 프로젝트 설정
-
-#### 1. 저장소 클론
-```bash
-git clone <repository-url>
+# Clone
+git clone https://github.com/[org]/astra-clear.git
 cd astra-clear
+
+# Cosmos Hub
+cd cosmos && go mod tidy && make build
+
+# Smart Contracts
+cd ../contracts && npm install && npx hardhat compile
+
+# Run Tests
+cd ../cosmos && go test ./...
+cd ../contracts && npx hardhat test
 ```
 
-#### 2. 자동 개발 환경 설정 (권장)
-```bash
-# Linux/macOS
-chmod +x setup-dev.sh
-./setup-dev.sh
-
-# Windows
-setup-dev.bat
-```
-
-이 스크립트는 다음을 자동으로 수행합니다:
-- 필수 도구 설치 확인 (Go, Docker, Docker Compose)
-- Cosmos Hub 초기화 및 빌드
-- Hyperledger Besu 네트워크 시작
-- 개발 환경 준비 완료
-
-#### 3. 수동 Cosmos Hub 설정 및 실행 (자동 설정을 사용하지 않는 경우)
-```bash
-# Cosmos 디렉토리로 이동
-cd cosmos
-
-# Go 모듈 의존성 설치
-go mod tidy
-
-# 바이너리 빌드
-make build
-
-# 또는 직접 빌드
-go build -o build/interbank-nettingd ./cmd/interbank-nettingd
-
-# 체인 초기화
-./build/interbank-nettingd init mynode --chain-id interbank-netting
-
-# 제네시스 계정 추가
-./build/interbank-nettingd keys add validator
-./build/interbank-nettingd add-genesis-account $(./build/interbank-nettingd keys show validator -a) 1000000000stake
-
-# 제네시스 트랜잭션 생성
-./build/interbank-nettingd gentx validator 1000000stake --chain-id interbank-netting
-
-# 제네시스 파일 수집
-./build/interbank-nettingd collect-gentxs
-
-# 체인 시작
-./build/interbank-nettingd start
-```
-
-#### 4. 수동 Hyperledger Besu 네트워크 실행 (자동 설정을 사용하지 않는 경우)
-```bash
-# 프로젝트 루트로 돌아가기
-cd ..
-
-# Besu 네트워크 시작 (Docker 사용)
-# Windows
-scripts/start-besu-networks.bat
-
-# Linux/macOS
-chmod +x scripts/start-besu-networks.sh
-./scripts/start-besu-networks.sh
-
-# 또는 Docker Compose 직접 사용
-docker-compose -f docker/docker-compose.besu.yml up -d
-```
-
-#### 5. 스마트 컨트랙트 배포 (향후 구현)
-```bash
-cd contracts
-
-# 의존성 설치
-npm install
-
-# 컨트랙트 컴파일
-npx hardhat compile
-
-# 로컬 네트워크에 배포
-npx hardhat run scripts/deploy.js --network localhost
-```
-
-### 테스트 실행
-
-#### 1. 속성 기반 테스트 (Property-Based Tests)
-```bash
-cd cosmos
-
-# 모든 테스트 실행
-go test ./...
-
-# 특정 모듈 테스트
-go test ./x/oracle/keeper -v
-go test ./x/netting/keeper -v
-go test ./x/multisig/keeper -v
-
-# 속성 테스트만 실행
-go test ./x/oracle/keeper -v -run TestProperty
-go test ./x/netting/keeper -v -run TestProperty
-go test ./x/multisig/keeper -v -run TestProperty
-```
-
-#### 2. 통합 테스트 (향후 구현)
-```bash
-# 전체 시스템 통합 테스트
-make test-integration
-
-# 특정 시나리오 테스트
-make test-scenario-basic-transfer
-make test-scenario-netting
-```
-
-### 개발 도구
-
-#### 1. 코드 포맷팅
-```bash
-# Go 코드 포맷팅
-go fmt ./...
-
-# Solidity 코드 포맷팅 (contracts 디렉토리에서)
-npx prettier --write contracts/**/*.sol
-```
-
-#### 2. 린팅
-```bash
-# Go 린팅
-golangci-lint run
-
-# Solidity 린팅
-npx solhint contracts/**/*.sol
-```
-
-### 네트워크 상태 확인
-
-#### 1. Cosmos Hub 상태
-```bash
-# 노드 상태 확인
-curl http://localhost:26657/status
-
-# 계정 잔액 확인
-./build/interbank-nettingd query bank balances $(./build/interbank-nettingd keys show validator -a)
-
-# 모듈별 상태 확인
-./build/interbank-nettingd query oracle vote-status <tx-hash>
-./build/interbank-nettingd query netting credit-balance <bank-id> <denom>
-./build/interbank-nettingd query multisig validator-set
-```
-
-#### 2. Besu 네트워크 상태
-```bash
-# Bank A 네트워크 상태
-curl -X POST --data '{"jsonrpc":"2.0","method":"eth_blockNumber","params":[],"id":1}' http://localhost:8545
-
-# Bank B 네트워크 상태
-curl -X POST --data '{"jsonrpc":"2.0","method":"eth_blockNumber","params":[],"id":1}' http://localhost:8546
-
-# 네트워크 피어 확인
-curl -X POST --data '{"jsonrpc":"2.0","method":"net_peerCount","params":[],"id":1}' http://localhost:8545
-```
-
-### 트러블슈팅
-
-#### 1. 포트 충돌
-```bash
-# 사용 중인 포트 확인
-# Windows
-netstat -ano | findstr :26657
-netstat -ano | findstr :8545
-
-# Linux/macOS
-lsof -i :26657
-lsof -i :8545
-
-# 프로세스 종료 후 재시작
-```
-
-#### 2. Docker 관련 문제
-```bash
-# Docker 컨테이너 상태 확인
-docker ps -a
-
-# 로그 확인
-docker logs <container-name>
-
-# 컨테이너 재시작
-docker-compose -f docker/docker-compose.besu.yml restart
-```
-
-#### 3. Go 모듈 문제
-```bash
-# 모듈 캐시 정리
-go clean -modcache
-
-# 의존성 재설치
-go mod tidy
-go mod download
-```
-
-### 다음 단계
-
-1. **Relayer 구현**: Cosmos Hub와 Besu 네트워크 간 이벤트 전달
-2. **스마트 컨트랙트 완성**: Gateway.sol, Executor.sol 구현
-3. **통합 테스트**: 전체 시스템 End-to-End 테스트
-4. **성능 최적화**: 처리량 및 지연시간 개선
-5. **모니터링**: 메트릭 수집 및 대시보드 구성
+상세 설치 및 실행 가이드: [docs/DEVELOPER_GUIDE.md](docs/DEVELOPER_GUIDE.md)
 
 ---
 
-## 📜 License
+## Documentation
+
+| 문서 | 설명 |
+|------|------|
+| [DEVELOPER_GUIDE.md](docs/DEVELOPER_GUIDE.md) | 설치, 빌드, 실행 가이드 |
+| [ARCHITECTURE.md](docs/ARCHITECTURE.md) | 시스템 아키텍처 및 흐름도 |
+| [WHITEPAPER.md](docs/WHITEPAPER.md) | 설계 원칙 및 기술 명세 |
+| [FEATURES.md](docs/FEATURES.md) | 기능별 상세 설명 |
+
+---
+
+## Project Status
+
+| Component | Status |
+|-----------|--------|
+| Cosmos x/oracle | Implemented |
+| Cosmos x/netting | Implemented |
+| Cosmos x/multisig | Implemented |
+| Gateway.sol | Implemented |
+| Executor.sol | Implemented |
+| Relayer | Implemented |
+| Property-Based Tests | 100+ test cases |
+| Integration Tests | In Progress |
+
+---
+
+## Scope & Limitations
+
+**In Scope (MVP)**
+- 100% 담보 스테이블코인 환경
+- 허가형 금융기관 컨소시엄
+- 양방향 Netting (Bilateral)
+- ECDSA 기반 서명 검증
+
+**Out of Scope**
+- 신용 한도 관리
+- 파산/디폴트 처리
+- 다자간 Netting (Multilateral)
+- 이자/FX/수수료 모델
+- 규제 프레임워크
+
+---
+
+## License
 
 MIT License
 
 ---
 
-## 🛰 Closing Thought
+## Contact
 
-**astra-clear**는 질문에서 출발합니다.
-
-> "은행 간 결제에서 정말로 모든 송금을 즉시 정산해야 할까?"
-
-이 프로젝트는 그 질문에 대한 하나의 기술적 실험입니다.
+이 프로젝트는 기술 검증 목적의 POC입니다.
+프로덕션 환경 적용 시 별도 검토가 필요합니다.
