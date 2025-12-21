@@ -546,3 +546,199 @@ func (k Keeper) setNettingCycle(ctx sdk.Context, cycle types.NettingCycle) {
 	bz := k.cdc.MustMarshal(&cycle)
 	store.Set(key, bz)
 }
+
+// =============================================================================
+// Error Handling and Recovery (Task 12.3)
+// =============================================================================
+
+// NettingSnapshot stores balances before netting for potential rollback
+type NettingSnapshot struct {
+	CycleID  uint64
+	Balances map[string]map[string]math.Int // bank -> denom -> amount
+}
+
+// CreateNettingSnapshot creates a snapshot of current credit balances for rollback
+func (k Keeper) CreateNettingSnapshot(ctx sdk.Context, pairs []types.BankPair) NettingSnapshot {
+	snapshot := NettingSnapshot{
+		CycleID:  uint64(ctx.BlockHeight()),
+		Balances: make(map[string]map[string]math.Int),
+	}
+
+	// Collect all affected banks
+	affectedBanks := make(map[string]bool)
+	for _, pair := range pairs {
+		affectedBanks[pair.BankA] = true
+		affectedBanks[pair.BankB] = true
+	}
+
+	// Store current balances
+	for bank := range affectedBanks {
+		balances := k.GetAllCreditBalances(ctx, bank)
+		if len(balances) > 0 {
+			snapshot.Balances[bank] = balances
+		}
+	}
+
+	return snapshot
+}
+
+// RollbackNetting restores balances from snapshot after a failed netting
+func (k Keeper) RollbackNetting(ctx sdk.Context, snapshot NettingSnapshot) error {
+	k.Logger(ctx).Info("rolling back netting cycle",
+		"cycle_id", snapshot.CycleID,
+		"affected_banks", len(snapshot.Balances),
+	)
+
+	for bank, balances := range snapshot.Balances {
+		for denom, amount := range balances {
+			k.setCreditBalance(ctx, bank, denom, amount)
+		}
+	}
+
+	// Emit rollback event
+	ctx.EventManager().EmitEvent(
+		sdk.NewEvent(
+			nettingtypes.EventTypeNettingRollback,
+			sdk.NewAttribute(nettingtypes.AttributeKeyCycleID, strconv.FormatUint(snapshot.CycleID, 10)),
+			sdk.NewAttribute(nettingtypes.AttributeKeyBlockHeight, strconv.FormatInt(ctx.BlockHeight(), 10)),
+		),
+	)
+
+	return nil
+}
+
+// ExecuteNettingWithRollback executes netting with automatic rollback on failure
+// Requirement 12.3: 부분 소각 실패 시 전체 롤백
+func (k Keeper) ExecuteNettingWithRollback(ctx sdk.Context, pairs []types.BankPair) error {
+	if len(pairs) == 0 {
+		return nettingtypes.ErrNettingNotRequired
+	}
+
+	// Create snapshot before netting
+	snapshot := k.CreateNettingSnapshot(ctx, pairs)
+
+	// Attempt netting
+	err := k.ExecuteNetting(ctx, pairs)
+	if err != nil {
+		// Rollback on failure
+		k.Logger(ctx).Error("netting failed, initiating rollback",
+			"cycle_id", snapshot.CycleID,
+			"error", err,
+		)
+
+		rollbackErr := k.RollbackNetting(ctx, snapshot)
+		if rollbackErr != nil {
+			k.Logger(ctx).Error("rollback failed",
+				"cycle_id", snapshot.CycleID,
+				"error", rollbackErr,
+			)
+			return fmt.Errorf("netting failed and rollback failed: %w (rollback: %v)", err, rollbackErr)
+		}
+
+		return fmt.Errorf("netting failed, rolled back: %w", err)
+	}
+
+	return nil
+}
+
+// ValidateNettingPairs validates pairs before executing netting
+// Requirement 12.3: 계산 오류 시 상태 복원
+func (k Keeper) ValidateNettingPairs(ctx sdk.Context, pairs []types.BankPair) error {
+	for i, pair := range pairs {
+		// Validate bank IDs
+		if pair.BankA == "" || pair.BankB == "" {
+			return fmt.Errorf("pair %d: invalid bank ID", i)
+		}
+
+		// Validate amounts are positive
+		if pair.AmountA.IsNil() || pair.AmountA.IsNegative() {
+			return fmt.Errorf("pair %d: invalid AmountA", i)
+		}
+		if pair.AmountB.IsNil() || pair.AmountB.IsNegative() {
+			return fmt.Errorf("pair %d: invalid AmountB", i)
+		}
+
+		// Validate sufficient balances exist
+		balanceA := k.GetCreditBalance(ctx, pair.BankA, "cred-"+pair.BankB)
+		balanceB := k.GetCreditBalance(ctx, pair.BankB, "cred-"+pair.BankA)
+
+		minAmount := pair.AmountA
+		if pair.AmountB.LT(minAmount) {
+			minAmount = pair.AmountB
+		}
+
+		if balanceA.LT(minAmount) || balanceB.LT(minAmount) {
+			return fmt.Errorf("pair %d: insufficient balance for netting", i)
+		}
+	}
+
+	return nil
+}
+
+// TriggerNettingWithErrorHandling triggers netting with comprehensive error handling
+func (k Keeper) TriggerNettingWithErrorHandling(ctx sdk.Context) error {
+	// Check cooldown
+	lastNettingBlock := k.getLastNettingBlock(ctx)
+	currentBlock := ctx.BlockHeight()
+
+	if currentBlock-lastNettingBlock < 10 {
+		return nettingtypes.ErrNettingNotRequired
+	}
+
+	// Calculate pairs
+	pairs, err := k.CalculateNetting(ctx)
+	if err != nil {
+		k.Logger(ctx).Error("failed to calculate netting", "error", err)
+		return err
+	}
+
+	if len(pairs) == 0 {
+		return nettingtypes.ErrNettingNotRequired
+	}
+
+	// Validate pairs
+	if err := k.ValidateNettingPairs(ctx, pairs); err != nil {
+		k.Logger(ctx).Error("netting validation failed", "error", err)
+		return err
+	}
+
+	// Execute with rollback protection
+	if err := k.ExecuteNettingWithRollback(ctx, pairs); err != nil {
+		return err
+	}
+
+	// Update last netting block
+	k.setLastNettingBlock(ctx, currentBlock)
+
+	return nil
+}
+
+// GetNettingStatus returns the status of the netting system
+func (k Keeper) GetNettingStatus(ctx sdk.Context) NettingSystemStatus {
+	lastBlock := k.getLastNettingBlock(ctx)
+	currentBlock := ctx.BlockHeight()
+	blocksUntilNext := int64(10) - (currentBlock - lastBlock)
+	if blocksUntilNext < 0 {
+		blocksUntilNext = 0
+	}
+
+	// Count pending netting pairs
+	pairs, _ := k.CalculateNetting(ctx)
+
+	return NettingSystemStatus{
+		LastNettingBlock:   lastBlock,
+		CurrentBlock:       currentBlock,
+		BlocksUntilNext:    blocksUntilNext,
+		PendingPairCount:   len(pairs),
+		IsNettingAvailable: blocksUntilNext == 0 && len(pairs) > 0,
+	}
+}
+
+// NettingSystemStatus represents the current status of the netting system
+type NettingSystemStatus struct {
+	LastNettingBlock   int64
+	CurrentBlock       int64
+	BlocksUntilNext    int64
+	PendingPairCount   int
+	IsNettingAvailable bool
+}

@@ -404,4 +404,178 @@ describe("Executor", function () {
       });
     }
   });
+
+  // =============================================================================
+  // Task 12.4: Error Handling Tests
+  // =============================================================================
+
+  describe("Error Handling (Task 12.4)", function () {
+    describe("validateMintCommand", function () {
+      it("Should return false for already processed command", async function () {
+        const { executor, validator1, validator2, user1 } = await loadFixture(deployExecutorFixture);
+
+        const commandId = ethers.keccak256(ethers.toUtf8Bytes("test-error-cmd-1"));
+        const amount = ethers.parseEther("100");
+
+        // Create and execute first mint
+        const sig1 = await signMintCommand(executor, commandId, user1.address, amount, validator1);
+        const sig2 = await signMintCommand(executor, commandId, user1.address, amount, validator2);
+
+        await executor.executeMint(commandId, user1.address, amount, [sig1, sig2]);
+
+        // Validate should return false for already processed
+        const [valid, reason] = await executor.validateMintCommand(
+          commandId, user1.address, amount, [sig1, sig2]
+        );
+        expect(valid).to.be.false;
+        expect(reason).to.equal("Command already processed");
+      });
+
+      it("Should return false for zero recipient", async function () {
+        const { executor } = await loadFixture(deployExecutorFixture);
+
+        const commandId = ethers.keccak256(ethers.toUtf8Bytes("test-error-cmd-2"));
+        const amount = ethers.parseEther("100");
+
+        const [valid, reason] = await executor.validateMintCommand(
+          commandId, ethers.ZeroAddress, amount, []
+        );
+        expect(valid).to.be.false;
+        expect(reason).to.equal("Invalid recipient address");
+      });
+
+      it("Should return false for zero amount", async function () {
+        const { executor, user1 } = await loadFixture(deployExecutorFixture);
+
+        const commandId = ethers.keccak256(ethers.toUtf8Bytes("test-error-cmd-3"));
+
+        const [valid, reason] = await executor.validateMintCommand(
+          commandId, user1.address, 0, []
+        );
+        expect(valid).to.be.false;
+        expect(reason).to.equal("Amount must be greater than 0");
+      });
+
+      it("Should return false for insufficient signatures", async function () {
+        const { executor, validator1, user1 } = await loadFixture(deployExecutorFixture);
+
+        const commandId = ethers.keccak256(ethers.toUtf8Bytes("test-error-cmd-4"));
+        const amount = ethers.parseEther("100");
+
+        // Provide only 1 signature (threshold is 2)
+        const sig1 = await signMintCommand(executor, commandId, user1.address, amount, validator1);
+
+        const [valid, reason] = await executor.validateMintCommand(
+          commandId, user1.address, amount, [sig1]
+        );
+        expect(valid).to.be.false;
+        expect(reason).to.equal("Insufficient signatures");
+      });
+
+      it("Should return true for valid command", async function () {
+        const { executor, validator1, validator2, user1 } = await loadFixture(deployExecutorFixture);
+
+        const commandId = ethers.keccak256(ethers.toUtf8Bytes("test-error-cmd-5"));
+        const amount = ethers.parseEther("100");
+
+        const sig1 = await signMintCommand(executor, commandId, user1.address, amount, validator1);
+        const sig2 = await signMintCommand(executor, commandId, user1.address, amount, validator2);
+
+        const [valid, reason] = await executor.validateMintCommand(
+          commandId, user1.address, amount, [sig1, sig2]
+        );
+        expect(valid).to.be.true;
+        expect(reason).to.equal("");
+      });
+    });
+
+    describe("getValidatorSetInfo", function () {
+      it("Should return correct validator set info", async function () {
+        const { executor } = await loadFixture(deployExecutorFixture);
+
+        // Fixture already sets up 3 validators
+        const [version, count, threshold] = await executor.getValidatorSetInfo();
+        expect(version).to.equal(1);
+        expect(count).to.equal(3);
+        expect(threshold).to.equal(2);
+      });
+    });
+
+    describe("verifyValidatorSet", function () {
+      it("Should return false for version mismatch", async function () {
+        const { executor, validator1, validator2, validator3 } = await loadFixture(deployExecutorFixture);
+
+        const validators = [validator1.address, validator2.address, validator3.address];
+        const [matches, reason] = await executor.verifyValidatorSet(validators, 0);
+        expect(matches).to.be.false;
+        expect(reason).to.equal("Version mismatch");
+      });
+
+      it("Should return false for validator count mismatch", async function () {
+        const { executor, validator1, validator2 } = await loadFixture(deployExecutorFixture);
+
+        const [matches, reason] = await executor.verifyValidatorSet(
+          [validator1.address, validator2.address], 1
+        );
+        expect(matches).to.be.false;
+        expect(reason).to.equal("Validator count mismatch");
+      });
+
+      it("Should return false for unknown validator", async function () {
+        const { executor, validator1, validator2, nonValidator } = await loadFixture(deployExecutorFixture);
+
+        const [matches, reason] = await executor.verifyValidatorSet(
+          [validator1.address, validator2.address, nonValidator.address], 1
+        );
+        expect(matches).to.be.false;
+        expect(reason).to.equal("Validator not found");
+      });
+
+      it("Should return true for matching validator set", async function () {
+        const { executor, validator1, validator2, validator3 } = await loadFixture(deployExecutorFixture);
+
+        const validators = [validator1.address, validator2.address, validator3.address];
+        const [matches, reason] = await executor.verifyValidatorSet(validators, 1);
+        expect(matches).to.be.true;
+        expect(reason).to.equal("");
+      });
+    });
+
+    describe("estimateMintGas", function () {
+      it("Should return reasonable gas estimate", async function () {
+        const { executor, user1 } = await loadFixture(deployExecutorFixture);
+
+        const commandId = ethers.keccak256(ethers.toUtf8Bytes("test-gas"));
+        const amount = ethers.parseEther("100");
+        const dummySigs = ["0x" + "00".repeat(65), "0x" + "00".repeat(65)];
+
+        const gasEstimate = await executor.estimateMintGas(
+          commandId, user1.address, amount, dummySigs
+        );
+
+        // Should be at least base gas
+        expect(gasEstimate).to.be.gt(50000);
+        // Should include buffer
+        expect(gasEstimate).to.be.lt(200000);
+      });
+
+      it("Should scale with signature count", async function () {
+        const { executor, user1 } = await loadFixture(deployExecutorFixture);
+
+        const commandId = ethers.keccak256(ethers.toUtf8Bytes("test-gas-2"));
+        const amount = ethers.parseEther("100");
+
+        const dummySig = "0x" + "00".repeat(65);
+        const gas2Sigs = await executor.estimateMintGas(
+          commandId, user1.address, amount, [dummySig, dummySig]
+        );
+
+        const gas5Sigs = await executor.estimateMintGas(
+          commandId, user1.address, amount, [dummySig, dummySig, dummySig, dummySig, dummySig]
+        );
+
+        expect(gas5Sigs).to.be.gt(gas2Sigs);
+      });
+    });
+  });
 });

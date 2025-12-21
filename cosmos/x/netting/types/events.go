@@ -8,6 +8,7 @@ const (
 	EventTypeNettingTriggered  = "netting_triggered"
 	EventTypeNettingCompleted  = "netting_completed"
 	EventTypeNettingFailed     = "netting_failed"
+	EventTypeNettingRollback   = "netting_rollback"
 )
 
 // Netting module event attribute keys

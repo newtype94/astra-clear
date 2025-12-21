@@ -538,6 +538,158 @@ func (k Keeper) GetAllVoteStatuses(ctx sdk.Context) []commontypes.VoteStatus {
 }
 
 // =============================================================================
+// Error Handling and Recovery (Task 12.2)
+// =============================================================================
+
+// GetDynamicThreshold calculates threshold based on active validators only
+// This handles validator offline scenario by excluding inactive validators
+func (k Keeper) GetDynamicThreshold(ctx sdk.Context) (threshold int32, activeCount int) {
+	validators, err := k.stakingKeeper.GetBondedValidatorsByPower(ctx)
+	if err != nil {
+		return 1, 0
+	}
+
+	// Count only active (bonded) validators
+	activeCount = 0
+	for _, val := range validators {
+		if val.IsBonded() && !val.IsJailed() {
+			activeCount++
+		}
+	}
+
+	if activeCount == 0 {
+		return 1, 0
+	}
+
+	// Calculate 2/3 threshold
+	threshold = int32((activeCount * 2) / 3)
+	if (activeCount*2)%3 != 0 {
+		threshold++
+	}
+
+	if threshold < 1 {
+		threshold = 1
+	}
+
+	return threshold, activeCount
+}
+
+// ProcessPendingTransfersWithTimeout processes all pending transfers and rejects timed out ones
+// Requirement 12.2: 검증자 오프라인 시 동적 임계값 조정
+func (k Keeper) ProcessPendingTransfersWithTimeout(ctx sdk.Context, timeoutBlocks int64) (processed, rejected int) {
+	store := ctx.KVStore(k.storeKey)
+	iterator := storetypes.KVStorePrefixIterator(store, types.VoteStatusKeyPrefix)
+	defer iterator.Close()
+
+	for ; iterator.Valid(); iterator.Next() {
+		var voteStatus commontypes.VoteStatus
+		k.cdc.MustUnmarshal(iterator.Value(), &voteStatus)
+
+		// Skip already confirmed transfers
+		if voteStatus.Confirmed {
+			continue
+		}
+
+		processed++
+
+		// Check for timeout
+		isTimeout, err := k.CheckConsensusTimeout(ctx, voteStatus.TxHash, timeoutBlocks)
+		if err != nil {
+			k.Logger(ctx).Error("failed to check consensus timeout",
+				"tx_hash", voteStatus.TxHash,
+				"error", err,
+			)
+			continue
+		}
+
+		if isTimeout {
+			// Reject the transfer due to timeout
+			if err := k.RejectTransfer(ctx, voteStatus.TxHash, "consensus timeout"); err != nil {
+				k.Logger(ctx).Error("failed to reject timed out transfer",
+					"tx_hash", voteStatus.TxHash,
+					"error", err,
+				)
+			} else {
+				rejected++
+			}
+		}
+	}
+
+	return processed, rejected
+}
+
+// ValidateVoteSignatureWithFallback validates signature with fallback for individual signature errors
+// Requirement 12.2: 서명 오류 시 개별 서명 제외 처리
+func (k Keeper) ValidateVoteSignatureWithFallback(ctx sdk.Context, vote commontypes.Vote) (valid bool, excludeReason string) {
+	// First try normal signature verification
+	if k.VerifySignature(ctx, vote.Validator, []byte(vote.TxHash), vote.Signature) {
+		return true, ""
+	}
+
+	// Log the signature error
+	k.Logger(ctx).Info("signature verification failed, excluding vote",
+		"validator", vote.Validator,
+		"tx_hash", vote.TxHash,
+	)
+
+	// Return invalid with reason
+	return false, "invalid signature"
+}
+
+// GetPendingTransferCount returns the count of pending (unconfirmed) transfers
+func (k Keeper) GetPendingTransferCount(ctx sdk.Context) int {
+	store := ctx.KVStore(k.storeKey)
+	iterator := storetypes.KVStorePrefixIterator(store, types.VoteStatusKeyPrefix)
+	defer iterator.Close()
+
+	count := 0
+	for ; iterator.Valid(); iterator.Next() {
+		var voteStatus commontypes.VoteStatus
+		k.cdc.MustUnmarshal(iterator.Value(), &voteStatus)
+		if !voteStatus.Confirmed {
+			count++
+		}
+	}
+
+	return count
+}
+
+// RecoverFromConsensusFailure attempts to recover from consensus failure
+// by recalculating thresholds and retrying confirmation
+func (k Keeper) RecoverFromConsensusFailure(ctx sdk.Context, txHash string) error {
+	voteStatus, found := k.GetVoteStatus(ctx, txHash)
+	if !found {
+		return types.ErrTransferNotFound
+	}
+
+	if voteStatus.Confirmed {
+		return nil // Already confirmed, nothing to do
+	}
+
+	// Get dynamic threshold based on current active validators
+	threshold, activeCount := k.GetDynamicThreshold(ctx)
+
+	k.Logger(ctx).Info("attempting recovery with dynamic threshold",
+		"tx_hash", txHash,
+		"current_votes", voteStatus.VoteCount,
+		"original_threshold", voteStatus.Threshold,
+		"dynamic_threshold", threshold,
+		"active_validators", activeCount,
+	)
+
+	// If we now have enough votes with the dynamic threshold, confirm
+	if voteStatus.VoteCount >= threshold {
+		// Update threshold and attempt confirmation
+		voteStatus.Threshold = threshold
+		k.setVoteStatus(ctx, voteStatus)
+
+		return k.ConfirmTransfer(ctx, txHash)
+	}
+
+	return types.ErrInsufficientVotes
+}
+
+// =============================================================================
 // Audit Logging System (Requirement 7.1 - 7.5)
 // =============================================================================
 

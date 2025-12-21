@@ -292,4 +292,201 @@ contract Executor is Ownable, ReentrancyGuard {
         require(_token != address(0), "Executor: token is zero address");
         token = BankToken(_token);
     }
+
+    // =============================================================================
+    // Error Handling and Recovery (Task 12.4)
+    // =============================================================================
+
+    // Failed command tracking for retry logic
+    mapping(bytes32 => FailedCommand) public failedCommands;
+    uint256 public failedCommandCount;
+
+    struct FailedCommand {
+        bytes32 commandId;
+        address recipient;
+        uint256 amount;
+        string failureReason;
+        uint256 failedAt;
+        bool retried;
+    }
+
+    event CommandFailed(
+        bytes32 indexed commandId,
+        address indexed recipient,
+        uint256 amount,
+        string reason,
+        uint256 timestamp
+    );
+
+    event CommandRetried(
+        bytes32 indexed commandId,
+        bool success
+    );
+
+    /**
+     * @dev Validates a mint command without executing
+     * Used for pre-flight checks and gas estimation
+     * Requirement 12.4: 자동 가스 추정 및 여유분 추가
+     */
+    function validateMintCommand(
+        bytes32 commandId,
+        address recipient,
+        uint256 amount,
+        bytes[] calldata signatures
+    ) external view returns (bool valid, string memory reason) {
+        // Check if already processed
+        if (processedCommands[commandId]) {
+            return (false, "Command already processed");
+        }
+
+        // Check recipient
+        if (recipient == address(0)) {
+            return (false, "Invalid recipient address");
+        }
+
+        // Check amount
+        if (amount == 0) {
+            return (false, "Amount must be greater than 0");
+        }
+
+        // Check signature count
+        if (signatures.length < threshold) {
+            return (false, "Insufficient signatures");
+        }
+
+        // Verify signatures
+        bytes32 messageHash = keccak256(
+            abi.encodePacked(commandId, recipient, amount, chainId)
+        );
+        bytes32 ethSignedMessageHash = messageHash.toEthSignedMessageHash();
+
+        uint256 validSignatures = 0;
+        address[] memory signers = new address[](signatures.length);
+
+        for (uint256 i = 0; i < signatures.length; i++) {
+            address signer = ethSignedMessageHash.recover(signatures[i]);
+
+            if (!validators[signer]) {
+                continue;
+            }
+
+            bool isDuplicate = false;
+            for (uint256 j = 0; j < validSignatures; j++) {
+                if (signers[j] == signer) {
+                    isDuplicate = true;
+                    break;
+                }
+            }
+
+            if (!isDuplicate) {
+                signers[validSignatures] = signer;
+                validSignatures++;
+            }
+        }
+
+        if (validSignatures < threshold) {
+            return (false, "Insufficient valid signatures");
+        }
+
+        return (true, "");
+    }
+
+    /**
+     * @dev Returns the expected validator set version
+     * Used for detecting validator set mismatch
+     * Requirement 12.4: 검증자 세트 불일치 감지 및 동기화
+     */
+    function getValidatorSetInfo() external view returns (
+        uint256 version,
+        uint256 validatorCount,
+        uint256 currentThreshold
+    ) {
+        return (validatorSetVersion, validatorList.length, threshold);
+    }
+
+    /**
+     * @dev Verifies if the provided validator set matches the contract state
+     * Requirement 12.4: 검증자 세트 불일치 감지
+     */
+    function verifyValidatorSet(
+        address[] calldata expectedValidators,
+        uint256 expectedVersion
+    ) external view returns (bool matches, string memory reason) {
+        if (expectedVersion != validatorSetVersion) {
+            return (false, "Version mismatch");
+        }
+
+        if (expectedValidators.length != validatorList.length) {
+            return (false, "Validator count mismatch");
+        }
+
+        for (uint256 i = 0; i < expectedValidators.length; i++) {
+            if (!validators[expectedValidators[i]]) {
+                return (false, "Validator not found");
+            }
+        }
+
+        return (true, "");
+    }
+
+    /**
+     * @dev Records a failed command for later retry
+     * Internal helper for error tracking
+     */
+    function _recordFailedCommand(
+        bytes32 commandId,
+        address recipient,
+        uint256 amount,
+        string memory reason
+    ) internal {
+        failedCommands[commandId] = FailedCommand({
+            commandId: commandId,
+            recipient: recipient,
+            amount: amount,
+            failureReason: reason,
+            failedAt: block.timestamp,
+            retried: false
+        });
+        failedCommandCount++;
+
+        emit CommandFailed(commandId, recipient, amount, reason, block.timestamp);
+    }
+
+    /**
+     * @dev Gets failed command details
+     */
+    function getFailedCommand(bytes32 commandId) external view returns (
+        address recipient,
+        uint256 amount,
+        string memory failureReason,
+        uint256 failedAt,
+        bool retried
+    ) {
+        FailedCommand memory cmd = failedCommands[commandId];
+        return (cmd.recipient, cmd.amount, cmd.failureReason, cmd.failedAt, cmd.retried);
+    }
+
+    /**
+     * @dev Estimates gas for executeMint
+     * Returns estimated gas with 20% buffer
+     */
+    function estimateMintGas(
+        bytes32 commandId,
+        address recipient,
+        uint256 amount,
+        bytes[] calldata signatures
+    ) external view returns (uint256) {
+        // Base gas for state changes and token mint
+        uint256 baseGas = 50000;
+
+        // Gas per signature verification
+        uint256 sigGas = signatures.length * 5000;
+
+        // Gas for token mint
+        uint256 mintGas = 30000;
+
+        // Total with 20% buffer
+        uint256 total = baseGas + sigGas + mintGas;
+        return (total * 120) / 100;
+    }
 }
