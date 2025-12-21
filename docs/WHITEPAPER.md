@@ -1,12 +1,11 @@
 # Astra Clear: Technical Whitepaper
 
-Interbank Netting & Clearing Engine for Permissioned Stablecoin Networks
-
----
+<details>
+<summary><b>🇺🇸 English</b></summary>
 
 ## Abstract
 
-Astra Clear는 허가형 금융기관 컨소시엄 환경에서 은행 간 결제를 효율화하는 청산 엔진이다. 기존 RTGS(Real-Time Gross Settlement) 시스템은 모든 거래를 개별 정산하여 높은 유동성 비용과 처리 지연을 유발한다. Astra Clear는 은행 간 채권/채무를 토큰화(IOU)하고 주기적 상계(Netting)를 통해 실제 자금 이동을 최소화한다. 사용자에게는 즉시 지급을 제공하면서 은행 간 정산은 효율적으로 처리한다.
+Astra Clear is a clearing engine that optimizes interbank settlements in permissioned financial institution consortiums. Traditional RTGS systems settle every transaction individually, causing high liquidity costs and processing delays. Astra Clear tokenizes interbank obligations (IOU) and minimizes actual fund movements through periodic netting. Users receive instant payments while interbank settlement is processed efficiently.
 
 ---
 
@@ -14,43 +13,23 @@ Astra Clear는 허가형 금융기관 컨소시엄 환경에서 은행 간 결�
 
 ### 1.1 Problem Statement
 
-현행 은행 간 결제 시스템의 비효율:
+Inefficiencies in current interbank payment systems:
 
-1. **Gross Settlement Overhead**
-   - 모든 송금건이 개별 처리됨
-   - 은행 A→B 100건, B→A 80건이 있어도 180건 모두 정산
-
-2. **Liquidity Lock-up**
-   - 일중 유동성 확보를 위한 담보 요구
-   - 노스트로/보스트로 계좌 유지 비용
-
-3. **Settlement Delay**
-   - 사용자 관점 즉시 송금 기대
-   - 실제 정산은 T+1 또는 T+2
-
-4. **Operational Cost**
-   - 건당 수수료
-   - SWIFT/대외계 인프라 비용
+| Issue | Description |
+|-------|-------------|
+| Gross Settlement | Every transfer processed individually |
+| Liquidity Lock-up | Collateral required for intraday liquidity |
+| Settlement Delay | T+1 or T+2 settlement cycles |
+| Operational Cost | Per-transaction fees, nostro account maintenance |
 
 ### 1.2 Proposed Solution
 
-Astra Clear의 접근:
-
-1. **Deferred Net Settlement (DNS)**
-   - 사용자에게는 즉시 지급 (토큰 Mint)
-   - 은행 간 정산은 Netting 후 처리
-
-2. **IOU Tokenization**
-   - 은행 간 채무를 블록체인 토큰으로 표현
-   - 투명한 잔액 추적 및 감사
-
-3. **BFT Consensus**
-   - 크로스체인 이벤트 검증
-   - 2/3 Validator 합의
-
-4. **Permissioned Network**
-   - KYC된 금융기관만 참여
-   - 규제 준수 용이
+| Approach | Description |
+|----------|-------------|
+| Deferred Net Settlement | Instant user payment, netted bank settlement |
+| IOU Tokenization | Transparent on-chain debt tracking |
+| BFT Consensus | Cross-chain event verification |
+| Permissioned Network | KYC'd financial institutions only |
 
 ---
 
@@ -60,62 +39,35 @@ Astra Clear의 접근:
 
 | Principle | Description |
 |-----------|-------------|
-| **Separation of Concerns** | 사용자 지급과 은행 간 정산 분리 |
-| **Atomicity** | 크로스체인 전송의 원자성 보장 |
-| **Finality** | BFT 합의를 통한 즉시 완결성 |
-| **Auditability** | 모든 상태 변경 추적 가능 |
-| **Fault Tolerance** | 부분 장애 시에도 시스템 운영 |
+| Separation of Concerns | User payment vs bank settlement |
+| Atomicity | Cross-chain transfer guarantees |
+| Finality | Immediate BFT consensus |
+| Auditability | All state changes tracked |
+| Fault Tolerance | Partial failure resilience |
 
-### 2.2 Architecture Overview
+### 2.2 Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│                         ASTRA CLEAR                              │
-├─────────────────────────────────────────────────────────────────┤
-│                                                                  │
-│   APPLICATION LAYER                                             │
-│   ─────────────────                                             │
-│   • User Interface (Bank Apps)                                  │
-│   • Admin Dashboard                                             │
-│                                                                  │
-│   COORDINATION LAYER (Cosmos Hub)                               │
-│   ───────────────────────────────                               │
-│   • Oracle Module - Cross-chain event voting                    │
-│   • Netting Module - IOU management & settlement                │
-│   • Multisig Module - Signature aggregation                     │
-│                                                                  │
-│   EXECUTION LAYER (Hyperledger Besu)                            │
-│   ──────────────────────────────────                            │
-│   • Gateway Contract - Transfer initiation                      │
-│   • Executor Contract - Mint execution                          │
-│   • BankToken Contract - Stablecoin                             │
-│                                                                  │
-│   TRANSPORT LAYER                                               │
-│   ───────────────                                               │
-│   • Relayer Service - Event relay                               │
-│   • WebSocket/RPC Connections                                   │
-│                                                                  │
-└─────────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────┐
+│                     ASTRA CLEAR                          │
+├─────────────────────────────────────────────────────────┤
+│  APPLICATION LAYER                                       │
+│  • User Interface, Admin Dashboard                      │
+│                                                          │
+│  COORDINATION LAYER (Cosmos Hub)                        │
+│  • Oracle - Event voting                                │
+│  • Netting - IOU management                             │
+│  • Multisig - Signature aggregation                     │
+│                                                          │
+│  EXECUTION LAYER (Hyperledger Besu)                     │
+│  • Gateway - Transfer initiation                        │
+│  • Executor - Mint execution                            │
+│  • BankToken - Stablecoin                               │
+│                                                          │
+│  TRANSPORT LAYER                                         │
+│  • Relayer Service                                       │
+└─────────────────────────────────────────────────────────┘
 ```
-
-### 2.3 Component Responsibilities
-
-**Cosmos Hub (Coordination)**
-- 크로스체인 이벤트 합의
-- 은행 간 채무 기록
-- Netting 실행 및 기록
-- Multi-sig 집계
-
-**Hyperledger Besu (Execution)**
-- 사용자 토큰 관리
-- 송금 시작 (Burn)
-- 수신 완료 (Mint)
-- 서명 검증
-
-**Relayer (Transport)**
-- 이벤트 감지 및 전달
-- Stateless 설계
-- 장애 복구 지원
 
 ---
 
@@ -123,120 +75,60 @@ Astra Clear의 접근:
 
 ### 3.1 Concept
 
-IOU(I Owe You) 토큰은 발행 은행의 채무를 나타낸다.
-
 ```
 Token: cred-BANK_A
 Meaning: "Bank A owes the holder this amount"
-Value: 1 cred-BANK_A = 1 Stablecoin Unit
+Value: 1 cred = 1 Stablecoin Unit
 ```
 
 ### 3.2 Properties
 
 | Property | Description |
 |----------|-------------|
-| **Issuer-specific** | 각 은행별 독립 토큰 |
-| **Fungible** | 동일 발행자 토큰은 대체 가능 |
-| **Burnable** | Netting 시 소각 |
-| **Non-transferable** | 은행 간 직접 이전 불가 (Netting만 가능) |
+| Issuer-specific | Separate token per bank |
+| Fungible | Same issuer tokens interchangeable |
+| Burnable | Destroyed during netting |
+| Non-transferable | Only netted, not traded |
 
 ### 3.3 Lifecycle
 
 ```
-1. ISSUANCE
-   ─────────
-   사용자가 Bank A → Bank B 송금 시
-   Bank B에게 cred-A 발행
-
-2. ACCUMULATION
-   ─────────────
-   여러 거래에 따라 잔액 누적
-   Bank B holds: cred-A 100, cred-C 50
-
-3. NETTING
-   ────────
-   상호 채무 상계
-   cred-A 30 + cred-B 30 → Burn (상계)
-
-4. SETTLEMENT
-   ───────────
-   순 채무에 대해 실제 정산
-   Net: Bank A → Bank B = 70
+1. ISSUANCE    - User A→B transfer creates cred-A for B
+2. ACCUMULATION - Multiple transfers accumulate balances
+3. NETTING     - Mutual obligations offset and burn
+4. SETTLEMENT  - Net obligations settled externally
 ```
-
-### 3.4 vs Central Liquidity Pool
-
-| Aspect | IOU Model | Central Pool |
-|--------|-----------|--------------|
-| Counterparty Risk | Issuer-specific | Pool operator |
-| Transparency | On-chain tracking | Opaque |
-| Netting | Bilateral | N/A |
-| Liquidity | Distributed | Concentrated |
 
 ---
 
 ## 4. Cross-Chain Transfer Protocol
 
-### 4.1 Protocol Steps
+### 4.1 Protocol Phases
 
-**Phase 1: Initiation (Source Chain)**
-```
-1. User calls Gateway.initiateTransfer(recipient, amount, destChain)
-2. Gateway burns user's tokens
-3. Gateway emits TransferInitiated event
-4. Relayer detects event
-```
+**Phase 1: Initiation**
+- User calls Gateway.initiateTransfer()
+- Tokens burned, event emitted
+- Relayer detects event
 
-**Phase 2: Consensus (Cosmos Hub)**
-```
-5. Relayer submits vote to Oracle module
-6. Validators independently verify and vote
-7. Upon 2/3 consensus, transfer is confirmed
-8. Netting module records IOU (cred-sourceBank to destBank)
-9. Multisig module generates mint command with signatures
-```
+**Phase 2: Consensus**
+- Relayer submits vote to Oracle
+- Validators verify and vote
+- 2/3 consensus confirms transfer
+- IOU recorded, mint command generated
 
-**Phase 3: Execution (Destination Chain)**
-```
-10. Relayer fetches mint command
-11. Relayer calls Executor.executeMint with signatures
-12. Executor verifies signatures (threshold check)
-13. Executor mints tokens to recipient
-14. Executor marks command as processed
-```
+**Phase 3: Execution**
+- Relayer fetches mint command
+- Executor verifies signatures
+- Tokens minted to recipient
 
-### 4.2 Message Format
-
-**TransferInitiated Event**
-```solidity
-event TransferInitiated(
-    bytes32 indexed transferId,
-    address indexed sender,
-    address recipient,
-    uint256 amount,
-    string destChain
-);
-```
-
-**MintCommand**
-```go
-type MintCommand struct {
-    CommandId   string
-    Recipient   string
-    Amount      math.Int
-    TargetChain string
-    Signatures  [][]byte
-}
-```
-
-### 4.3 Security Guarantees
+### 4.2 Security Guarantees
 
 | Property | Mechanism |
 |----------|-----------|
-| **No double-spend** | processedCommands mapping |
-| **Authenticity** | 2/3 validator signatures |
-| **Non-repudiation** | On-chain event records |
-| **Atomicity** | State rollback on failure |
+| No double-spend | processedCommands mapping |
+| Authenticity | 2/3 validator signatures |
+| Non-repudiation | On-chain event records |
+| Atomicity | State rollback on failure |
 
 ---
 
@@ -244,335 +136,386 @@ type MintCommand struct {
 
 ### 5.1 Bilateral Netting
 
-두 은행 간 상호 채무를 상계:
-
 ```
 Before:
-  Bank A → Bank B: 100 (cred-A held by B)
-  Bank B → Bank A:  30 (cred-B held by A)
-
-Netting:
-  Burn min(100, 30) = 30 from each
+  A → B: 100, B → A: 30
+  Gross: 130
 
 After:
-  Net: Bank A → Bank B: 70
-  Gross reduction: 130 → 70 (46%)
+  Burn min(100,30) = 30 each
+  Net: A → B: 70
+  Reduction: 46%
 ```
 
-### 5.2 Netting Cycle
+### 5.2 Netting Efficiency
 
-```
-┌─────────────────────────────────────────┐
-│             NETTING CYCLE               │
-├─────────────────────────────────────────┤
-│                                         │
-│  Trigger: Every N blocks (e.g., 720)   │
-│                                         │
-│  1. Identify all bank pairs with       │
-│     mutual obligations                  │
-│                                         │
-│  2. For each pair (A, B):              │
-│     - Get cred-A balance of B          │
-│     - Get cred-B balance of A          │
-│     - Calculate net = min(A→B, B→A)    │
-│     - Burn net amount from each        │
-│                                         │
-│  3. Record netting results             │
-│     - Cycle ID                         │
-│     - Pairs processed                  │
-│     - Total netted amount              │
-│                                         │
-└─────────────────────────────────────────┘
-```
-
-### 5.3 Netting Efficiency
-
-가정: 5개 은행, 각 쌍 간 양방향 거래
-
-| Metric | Without Netting | With Netting | Reduction |
-|--------|-----------------|--------------|-----------|
-| Gross obligations | 1,000,000 | - | - |
-| Net obligations | - | 400,000 | 60% |
-| Settlement txns | 20 | 10 | 50% |
-
-### 5.4 Rollback Mechanism
-
-Netting 실패 시 원자적 롤백:
-
-```go
-func ExecuteNettingWithRollback(ctx, pairs) error {
-    // 1. Create snapshot
-    snapshot := CreateNettingSnapshot(ctx, pairs)
-
-    // 2. Execute netting
-    err := ExecuteBilateralNetting(ctx, pairs)
-
-    // 3. Rollback on error
-    if err != nil {
-        RollbackNetting(ctx, snapshot)
-        return err
-    }
-
-    return nil
-}
-```
+| Metric | Without | With | Reduction |
+|--------|---------|------|-----------|
+| Gross | 1,000,000 | - | - |
+| Net | - | 400,000 | 60% |
+| Txns | 20 | 10 | 50% |
 
 ---
 
 ## 6. Consensus Mechanism
 
-### 6.1 Oracle Voting
-
-```
-┌─────────────────────────────────────────┐
-│           VOTE AGGREGATION              │
-├─────────────────────────────────────────┤
-│                                         │
-│  Transfer: 0xabc...                     │
-│                                         │
-│  Validator Votes:                       │
-│  ├── V1: ✓ (block 100)                 │
-│  ├── V2: ✓ (block 101)                 │
-│  ├── V3: ✓ (block 101)                 │
-│  ├── V4: ○ (pending)                   │
-│  └── V5: ○ (pending)                   │
-│                                         │
-│  Threshold: 2/3 + 1 = 4/5              │
-│  Current: 3/5                          │
-│  Status: PENDING                        │
-│                                         │
-└─────────────────────────────────────────┘
-```
-
-### 6.2 Threshold Calculation
+### 6.1 Threshold Calculation
 
 ```
 threshold = (validatorCount * 2 + 2) / 3
 
-Examples:
-- 3 validators: (3*2+2)/3 = 3 (100%)
-- 5 validators: (5*2+2)/3 = 4 (80%)
-- 7 validators: (7*2+2)/3 = 5 (71%)
+3 validators: 3 required (100%)
+5 validators: 4 required (80%)
+7 validators: 5 required (71%)
 ```
 
-### 6.3 Dynamic Threshold
+### 6.2 Signature Scheme
 
-오프라인 Validator 처리:
-
-```go
-func GetDynamicThreshold(ctx) (threshold, activeCount) {
-    validators := GetAllValidators(ctx)
-    activeCount := 0
-
-    for _, v := range validators {
-        if IsValidatorActive(ctx, v) {
-            activeCount++
-        }
-    }
-
-    threshold = (activeCount * 2 + 2) / 3
-    return threshold, activeCount
-}
+ECDSA (secp256k1):
 ```
-
-### 6.4 Signature Scheme
-
-ECDSA (secp256k1) 기반:
-
-```
-1. Message Construction
-   ─────────────────────
-   messageHash = keccak256(commandId || recipient || amount || chainId)
-
-2. Ethereum Signed Message
-   ────────────────────────
-   ethHash = keccak256("\x19Ethereum Signed Message:\n32" || messageHash)
-
-3. Signature Generation
-   ─────────────────────
-   sig = secp256k1_sign(ethHash, validatorPrivateKey)
-
-4. Signature Verification
-   ───────────────────────
-   recoveredAddr = ecrecover(ethHash, sig)
-   require(validators[recoveredAddr] == true)
+1. hash = keccak256(commandId || recipient || amount || chainId)
+2. ethHash = "\x19Ethereum Signed Message:\n32" || hash
+3. sig = secp256k1_sign(ethHash, privateKey)
+4. verify: ecrecover(ethHash, sig) == validator
 ```
 
 ---
 
 ## 7. Security Considerations
 
-### 7.1 Threat Model
+### 7.1 Trust Assumptions
 
-| Threat | Mitigation |
-|--------|------------|
-| **Byzantine Validators** | 2/3 threshold |
-| **Double Spending** | Command ID tracking |
-| **Replay Attack** | Chain-specific command ID |
-| **Signature Forgery** | ECDSA + ecrecover |
-| **Network Partition** | Timeout + dynamic threshold |
+| Trusted | Untrusted |
+|---------|-----------|
+| Validator Set | External Users |
+| Bank Operators | Network Layer |
+| Smart Contracts | Relayer |
 
-### 7.2 Trust Assumptions
+### 7.2 Attack Mitigation
 
-```
-TRUSTED:
-├── Validator Set (permissioned, KYC'd)
-├── Smart Contract Logic (audited)
-└── Cryptographic Primitives (secp256k1)
-
-UNTRUSTED:
-├── Network Layer (public internet)
-├── Relayer (stateless, replaceable)
-└── External Users (public access)
-```
-
-### 7.3 Attack Vectors & Defenses
-
-**1. Validator Collusion**
-- Risk: 2/3 validators collude to forge transfers
-- Defense: Permissioned set, economic incentives, audit logs
-
-**2. Replay Attack**
-- Risk: Reuse of valid signatures on different chain
-- Defense: Chain ID included in message hash
-
-**3. Front-running**
-- Risk: Validator extracts value by reordering
-- Defense: FIFO processing, no MEV extraction possible
-
-**4. Denial of Service**
-- Risk: Flood network with invalid requests
-- Defense: Rate limiting, gas costs, permissioned access
+| Attack | Defense |
+|--------|---------|
+| Validator Collusion | Permissioned set, audit logs |
+| Replay Attack | Chain ID in message hash |
+| Front-running | FIFO processing |
+| DoS | Rate limiting, permissioned access |
 
 ---
 
-## 8. Performance Analysis
+## 8. Performance
 
-### 8.1 Latency Breakdown
+### 8.1 Latency
 
-| Phase | Latency | Notes |
-|-------|---------|-------|
-| Source Chain | 2-5s | Besu IBFT block time |
-| Relayer Detection | 1-2s | Event polling |
-| Cosmos Voting | 5-10s | BFT consensus |
-| Relayer Fetch | 1-2s | Command polling |
-| Dest Chain | 2-5s | Besu IBFT block time |
-| **Total** | **11-24s** | End-to-end |
+| Phase | Latency |
+|-------|---------|
+| Source Chain | 2-5s |
+| Relayer | 1-2s |
+| Cosmos Voting | 5-10s |
+| Dest Chain | 2-5s |
+| **Total** | **11-24s** |
 
 ### 8.2 Throughput
 
-| Bottleneck | Capacity |
-|------------|----------|
-| Besu Block | 30M gas / 5s = ~1000 TPS |
-| Cosmos Hub | ~10,000 TPS (Tendermint) |
-| Relayer | Limited by RPC connections |
-
-### 8.3 Scalability
-
-| Dimension | Approach |
+| Component | Capacity |
 |-----------|----------|
-| More Banks | Linear validator set growth |
-| More Volume | Horizontal relayer scaling |
-| More Chains | Additional Besu networks |
+| Besu | ~1000 TPS |
+| Cosmos | ~10,000 TPS |
 
 ---
 
-## 9. Comparison with Alternatives
+## 9. Comparison
 
-### 9.1 vs RTGS (Real-Time Gross Settlement)
+### vs RTGS
 
 | Aspect | RTGS | Astra Clear |
 |--------|------|-------------|
-| Settlement | Per-transaction | Net basis |
-| Liquidity | High requirement | Reduced by netting |
-| Latency | Varies (mins-hours) | ~15 seconds |
-| Cost | Per-txn fees | Reduced by netting |
+| Settlement | Per-txn | Net basis |
+| Liquidity | High | Reduced |
+| Latency | Minutes-hours | ~15 seconds |
 
-### 9.2 vs Correspondent Banking
+### vs Correspondent Banking
 
 | Aspect | Correspondent | Astra Clear |
 |--------|---------------|-------------|
 | Intermediaries | Multiple | None |
-| Transparency | Limited | Full on-chain |
 | Settlement | T+1 to T+3 | Near real-time |
-| Trust | Bilateral | Consortium |
-
-### 9.3 vs Public Blockchain
-
-| Aspect | Public Chain | Astra Clear |
-|--------|--------------|-------------|
-| Access | Permissionless | Permissioned |
-| Finality | Probabilistic | Deterministic |
-| Compliance | Difficult | Built-in |
-| Throughput | Limited | Higher |
 
 ---
 
-## 10. Future Work
+## 10. Conclusion
 
-### 10.1 Planned Enhancements
-
-| Feature | Description | Priority |
-|---------|-------------|----------|
-| Multilateral Netting | N-party cycle detection | High |
-| Credit Limits | Per-bank exposure caps | High |
-| FX Support | Multi-currency netting | Medium |
-| Privacy | Zero-knowledge proofs | Medium |
-| Interoperability | IBC protocol | Low |
-
-### 10.2 Research Directions
-
-1. **Optimistic Execution**
-   - Execute first, verify later
-   - Fraud proof window
-
-2. **Threshold Signatures**
-   - Replace multi-sig with TSS
-   - Constant-size signatures
-
-3. **Recursive ZK Proofs**
-   - Prove netting correctness
-   - Privacy-preserving settlement
+Astra Clear demonstrates a technical approach to optimizing interbank settlements through IOU tokenization and bilateral netting. This POC validates the concept; production deployment requires additional review.
 
 ---
 
-## 11. Conclusion
-
-Astra Clear는 허가형 금융 네트워크에서 은행 간 결제 효율을 개선하는 실험적 시스템이다. IOU 토큰화와 Bilateral Netting을 통해 정산 건수를 줄이고, BFT 합의로 크로스체인 보안을 확보한다. 본 POC는 기술적 타당성을 검증하며, 프로덕션 적용 시 추가 검토가 필요하다.
-
----
-
-## References
-
-1. Tendermint: Byzantine Fault Tolerant State Machine Replication
-2. ECDSA: Elliptic Curve Digital Signature Algorithm (NIST FIPS 186-4)
-3. ERC-20: Token Standard (Ethereum Improvement Proposals)
-4. Hyperledger Besu: Enterprise Ethereum Client
-5. Cosmos SDK: Application Blockchain Interface
-
----
-
-## Appendix A: Glossary
-
-| Term | Definition |
-|------|------------|
-| **IOU** | I Owe You; 채무를 나타내는 토큰 |
-| **Netting** | 상호 채무 상계 |
-| **RTGS** | Real-Time Gross Settlement |
-| **BFT** | Byzantine Fault Tolerant |
-| **Validator** | 합의에 참여하는 노드 |
-| **Threshold** | 합의에 필요한 최소 서명 수 |
-
----
-
-## Appendix B: Configuration Parameters
+## Appendix: Parameters
 
 | Parameter | Default | Description |
 |-----------|---------|-------------|
-| `block_time` | 5s | Cosmos block interval |
-| `voting_timeout` | 100 blocks | Vote expiration |
-| `netting_interval` | 720 blocks | Netting cycle (~1 hour) |
-| `threshold_ratio` | 2/3 | Signature threshold |
-| `retry_max` | 5 | Max retry attempts |
-| `circuit_breaker_threshold` | 5 | Failures before open |
-| `circuit_breaker_timeout` | 60s | Time in open state |
+| block_time | 5s | Cosmos block interval |
+| voting_timeout | 100 blocks | Vote expiration |
+| netting_interval | 720 blocks | ~1 hour cycle |
+| threshold_ratio | 2/3 | Signature threshold |
+| retry_max | 5 | Max retries |
+
+</details>
+
+<details open>
+<summary><b>🇰🇷 한국어</b></summary>
+
+## 개요
+
+Astra Clear는 허가형 금융기관 컨소시엄 환경에서 은행 간 결제를 효율화하는 청산 엔진이다. 기존 RTGS 시스템은 모든 거래를 개별 정산하여 높은 유동성 비용과 처리 지연을 유발한다. Astra Clear는 은행 간 채권/채무를 토큰화(IOU)하고 주기적 상계(Netting)를 통해 실제 자금 이동을 최소화한다. 사용자에게는 즉시 지급을 제공하면서 은행 간 정산은 효율적으로 처리한다.
+
+---
+
+## 1. 서론
+
+### 1.1 문제 정의
+
+현행 은행 간 결제 시스템의 비효율:
+
+| 문제 | 설명 |
+|------|------|
+| 개별 정산 | 모든 송금건 개별 처리 |
+| 유동성 잠김 | 일중 유동성 담보 요구 |
+| 정산 지연 | T+1 또는 T+2 사이클 |
+| 운영 비용 | 건당 수수료, 노스트로 유지비 |
+
+### 1.2 제안 솔루션
+
+| 접근법 | 설명 |
+|--------|------|
+| 지연 순정산 | 사용자 즉시 지급, 은행 간 Netting 처리 |
+| IOU 토큰화 | 투명한 온체인 채무 추적 |
+| BFT 합의 | 크로스체인 이벤트 검증 |
+| 허가형 네트워크 | KYC된 금융기관만 참여 |
+
+---
+
+## 2. 시스템 설계
+
+### 2.1 설계 원칙
+
+| 원칙 | 설명 |
+|------|------|
+| 관심사 분리 | 사용자 지급 vs 은행 정산 |
+| 원자성 | 크로스체인 전송 보장 |
+| 완결성 | 즉시 BFT 합의 |
+| 감사 가능성 | 모든 상태 변경 추적 |
+| 장애 허용 | 부분 장애 복원력 |
+
+### 2.2 아키텍처
+
+```
+┌─────────────────────────────────────────────────────────┐
+│                     ASTRA CLEAR                          │
+├─────────────────────────────────────────────────────────┤
+│  애플리케이션 계층                                       │
+│  • 사용자 인터페이스, 관리자 대시보드                   │
+│                                                          │
+│  조정 계층 (Cosmos Hub)                                  │
+│  • Oracle - 이벤트 투표                                 │
+│  • Netting - IOU 관리                                   │
+│  • Multisig - 서명 집계                                 │
+│                                                          │
+│  실행 계층 (Hyperledger Besu)                           │
+│  • Gateway - 전송 시작                                  │
+│  • Executor - Mint 실행                                 │
+│  • BankToken - 스테이블코인                             │
+│                                                          │
+│  전송 계층                                               │
+│  • Relayer 서비스                                        │
+└─────────────────────────────────────────────────────────┘
+```
+
+---
+
+## 3. IOU 토큰 모델
+
+### 3.1 개념
+
+```
+토큰: cred-BANK_A
+의미: "Bank A가 보유자에게 갚아야 할 금액"
+가치: 1 cred = 1 스테이블코인 단위
+```
+
+### 3.2 속성
+
+| 속성 | 설명 |
+|------|------|
+| 발행자별 분리 | 은행별 독립 토큰 |
+| 대체 가능 | 동일 발행자 토큰 교환 가능 |
+| 소각 가능 | Netting 시 소각 |
+| 양도 불가 | 거래 불가, Netting만 가능 |
+
+### 3.3 생명주기
+
+```
+1. 발행     - 사용자 A→B 송금 시 B에게 cred-A 발행
+2. 누적     - 여러 거래로 잔액 누적
+3. 상계     - 상호 채무 상계 후 소각
+4. 정산     - 순 채무에 대해 외부 정산
+```
+
+---
+
+## 4. 크로스체인 전송 프로토콜
+
+### 4.1 프로토콜 단계
+
+**1단계: 시작**
+- 사용자가 Gateway.initiateTransfer() 호출
+- 토큰 소각, 이벤트 발생
+- Relayer가 이벤트 감지
+
+**2단계: 합의**
+- Relayer가 Oracle에 투표 제출
+- Validator들이 검증 후 투표
+- 2/3 합의 시 전송 확정
+- IOU 기록, Mint 명령 생성
+
+**3단계: 실행**
+- Relayer가 Mint 명령 가져옴
+- Executor가 서명 검증
+- 수신자에게 토큰 발행
+
+### 4.2 보안 보장
+
+| 속성 | 메커니즘 |
+|------|----------|
+| 이중 지불 방지 | processedCommands 맵 |
+| 진위성 | 2/3 Validator 서명 |
+| 부인 방지 | 온체인 이벤트 기록 |
+| 원자성 | 실패 시 상태 롤백 |
+
+---
+
+## 5. Netting 메커니즘
+
+### 5.1 양방향 Netting
+
+```
+전:
+  A → B: 100, B → A: 30
+  총 채무: 130
+
+후:
+  min(100,30) = 30씩 소각
+  순 채무: A → B: 70
+  감소율: 46%
+```
+
+### 5.2 Netting 효율
+
+| 지표 | Netting 전 | Netting 후 | 감소율 |
+|------|-----------|-----------|--------|
+| 총 채무 | 1,000,000 | - | - |
+| 순 채무 | - | 400,000 | 60% |
+| 거래 수 | 20 | 10 | 50% |
+
+---
+
+## 6. 합의 메커니즘
+
+### 6.1 임계값 계산
+
+```
+threshold = (validatorCount * 2 + 2) / 3
+
+3명: 3명 필요 (100%)
+5명: 4명 필요 (80%)
+7명: 5명 필요 (71%)
+```
+
+### 6.2 서명 체계
+
+ECDSA (secp256k1):
+```
+1. hash = keccak256(commandId || recipient || amount || chainId)
+2. ethHash = "\x19Ethereum Signed Message:\n32" || hash
+3. sig = secp256k1_sign(ethHash, privateKey)
+4. 검증: ecrecover(ethHash, sig) == validator
+```
+
+---
+
+## 7. 보안 고려사항
+
+### 7.1 신뢰 가정
+
+| 신뢰됨 | 비신뢰 |
+|--------|--------|
+| Validator 집합 | 외부 사용자 |
+| 은행 운영자 | 네트워크 계층 |
+| 스마트 컨트랙트 | Relayer |
+
+### 7.2 공격 대응
+
+| 공격 | 방어 |
+|------|------|
+| Validator 공모 | 허가형 집합, 감사 로그 |
+| 재전송 공격 | 메시지 해시에 Chain ID 포함 |
+| 프론트러닝 | FIFO 처리 |
+| DoS | 속도 제한, 허가형 접근 |
+
+---
+
+## 8. 성능
+
+### 8.1 지연시간
+
+| 단계 | 지연시간 |
+|------|----------|
+| Source Chain | 2-5초 |
+| Relayer | 1-2초 |
+| Cosmos 투표 | 5-10초 |
+| Dest Chain | 2-5초 |
+| **총** | **11-24초** |
+
+### 8.2 처리량
+
+| 컴포넌트 | 용량 |
+|----------|------|
+| Besu | ~1000 TPS |
+| Cosmos | ~10,000 TPS |
+
+---
+
+## 9. 비교
+
+### vs RTGS
+
+| 항목 | RTGS | Astra Clear |
+|------|------|-------------|
+| 정산 | 건별 | 순 기준 |
+| 유동성 | 높음 | 감소 |
+| 지연시간 | 분~시간 | ~15초 |
+
+### vs 환거래 은행
+
+| 항목 | 환거래 | Astra Clear |
+|------|--------|-------------|
+| 중개자 | 다수 | 없음 |
+| 정산 | T+1~T+3 | 준실시간 |
+
+---
+
+## 10. 결론
+
+Astra Clear는 IOU 토큰화와 양방향 Netting을 통해 은행 간 정산을 최적화하는 기술적 접근을 시연한다. 본 POC는 개념을 검증하며, 프로덕션 배포 시 추가 검토가 필요하다.
+
+---
+
+## 부록: 파라미터
+
+| 파라미터 | 기본값 | 설명 |
+|----------|--------|------|
+| block_time | 5초 | Cosmos 블록 주기 |
+| voting_timeout | 100 블록 | 투표 만료 |
+| netting_interval | 720 블록 | ~1시간 사이클 |
+| threshold_ratio | 2/3 | 서명 임계값 |
+| retry_max | 5 | 최대 재시도 |
+
+</details>

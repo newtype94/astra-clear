@@ -1,48 +1,35 @@
 # Features
 
-Astra Clear 기능별 상세 설명
-
----
+<details>
+<summary><b>🇺🇸 English</b></summary>
 
 ## 1. Cross-Chain Transfer
 
-### 1.1 기능 개요
+### Overview
+Transfer tokens from Bank A network to Bank B network recipient.
 
-Bank A 네트워크의 사용자가 Bank B 네트워크의 수신자에게 토큰을 전송하는 기능.
-
-### 1.2 처리 흐름
-
+### Flow
 ```
-Source Chain (Bank A)         Cosmos Hub              Dest Chain (Bank B)
-─────────────────────────────────────────────────────────────────────────
-     │                            │                          │
-     │ 1. initiateTransfer()      │                          │
-     ├────────────────────────────┤                          │
-     │    - Burn tokens           │                          │
-     │    - Emit event            │                          │
-     │                            │                          │
-     │ 2. Relayer submits vote    │                          │
-     ├───────────────────────────▶│                          │
-     │                            │                          │
-     │                            │ 3. Validators vote       │
-     │                            ├──────────────────────────┤
-     │                            │    - 2/3 consensus       │
-     │                            │                          │
-     │                            │ 4. Generate mint cmd     │
-     │                            │    + Multi-sig           │
-     │                            │                          │
-     │                            │ 5. Relayer fetches cmd   │
-     │                            ├─────────────────────────▶│
-     │                            │                          │
-     │                            │                          │ 6. executeMint()
-     │                            │                          ├─────────────────
-     │                            │                          │    - Verify sigs
-     │                            │                          │    - Mint tokens
+Source Chain                Cosmos Hub              Dest Chain
+─────────────────────────────────────────────────────────────
+     │                           │                       │
+     │ 1. initiateTransfer()     │                       │
+     ├───────────────────────────┤                       │
+     │    Burn + Emit event      │                       │
+     │                           │                       │
+     │ 2. Validators vote        │                       │
+     │    ───────────────────────┤                       │
+     │                           │ 3. 2/3 consensus      │
+     │                           │                       │
+     │                           │ 4. Mint command       │
+     │                           ├──────────────────────▶│
+     │                           │                       │
+     │                           │    5. Verify + Mint   │
 ```
 
-### 1.3 관련 코드
+### Code Reference
 
-**Gateway.sol - 송금 시작**
+**Gateway.sol**
 ```solidity
 function initiateTransfer(
     address recipient,
@@ -50,17 +37,11 @@ function initiateTransfer(
     string calldata destChain
 ) external {
     token.burn(msg.sender, amount);
-    emit TransferInitiated(
-        keccak256(abi.encodePacked(block.timestamp, msg.sender, recipient, amount)),
-        msg.sender,
-        recipient,
-        amount,
-        destChain
-    );
+    emit TransferInitiated(transferId, msg.sender, recipient, amount, destChain);
 }
 ```
 
-**Executor.sol - 수신 실행**
+**Executor.sol**
 ```solidity
 function executeMint(
     bytes32 commandId,
@@ -69,154 +50,96 @@ function executeMint(
     bytes[] calldata signatures
 ) external nonReentrant {
     require(signatures.length >= threshold);
-    // Verify signatures
-    // Mint tokens
+    // Verify signatures, mint tokens
 }
 ```
 
-### 1.4 보안 고려사항
+### Security
 
-| 위험 | 대응 |
-|------|------|
-| Double-spending | processedCommands 맵으로 중복 처리 방지 |
-| Replay attack | commandId에 timestamp 포함 |
-| Signature forgery | 2/3 threshold + ecrecover 검증 |
+| Risk | Mitigation |
+|------|------------|
+| Double-spending | processedCommands map |
+| Replay attack | commandId includes timestamp |
+| Signature forgery | 2/3 threshold + ecrecover |
 
 ---
 
 ## 2. Oracle Consensus
 
-### 2.1 기능 개요
+### Overview
+Verify external chain events through validator voting.
 
-External chain 이벤트를 Validator 투표를 통해 검증하고 확정하는 기능.
-
-### 2.2 투표 프로세스
-
+### Voting Process
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                     VOTE AGGREGATION                         │
-├─────────────────────────────────────────────────────────────┤
-│                                                              │
-│   Transfer Event: 0xabc...                                  │
-│   ───────────────────────────────                           │
-│                                                              │
-│   Validator A: ✓ Voted (block 100)                         │
-│   Validator B: ✓ Voted (block 101)                         │
-│   Validator C: ✓ Voted (block 101)                         │
-│   Validator D: ○ Pending                                    │
-│   Validator E: ○ Pending                                    │
-│                                                              │
-│   Status: 3/5 votes (60%)                                   │
-│   Threshold: 4/5 (67%)                                      │
-│   Result: PENDING                                            │
-│                                                              │
-└─────────────────────────────────────────────────────────────┘
+Transfer Event: 0xabc...
+
+Validator A: ✓ Voted (block 100)
+Validator B: ✓ Voted (block 101)
+Validator C: ✓ Voted (block 101)
+Validator D: ○ Pending
+Validator E: ○ Pending
+
+Status: 3/5 (60%)
+Threshold: 4/5 (67%)
+Result: PENDING
 ```
 
-### 2.3 관련 코드
+### Threshold Calculation
+```
+threshold = (validatorCount * 2 + 2) / 3
 
-**x/oracle/keeper - 투표 제출**
+3 validators: 3 required (100%)
+5 validators: 4 required (80%)
+7 validators: 5 required (71%)
+```
+
+### Dynamic Threshold
+Excludes offline validators:
 ```go
-func (k Keeper) SubmitVote(ctx sdk.Context, validator sdk.AccAddress,
-    txHash string, recipient string, amount math.Int, sourceChain string) error {
-
-    // Validate voter is active validator
-    if !k.IsActiveValidator(ctx, validator) {
-        return types.ErrValidatorNotActive
-    }
-
-    // Check duplicate vote
-    if k.HasVoted(ctx, txHash, validator) {
-        return types.ErrDuplicateVote
-    }
-
-    // Record vote
-    k.RecordVote(ctx, txHash, validator, recipient, amount, sourceChain)
-
-    // Check consensus
-    if k.HasReachedConsensus(ctx, txHash) {
-        k.ConfirmTransfer(ctx, txHash)
-    }
-
-    return nil
+func GetDynamicThreshold(ctx) (threshold, activeCount) {
+    activeCount := countActiveValidators(ctx)
+    threshold = (activeCount * 2 + 2) / 3
+    return threshold, activeCount
 }
 ```
-
-### 2.4 합의 로직
-
-- **Threshold**: 2/3 + 1 of active validators
-- **Timeout**: Configurable (default 100 blocks)
-- **Dynamic Threshold**: 오프라인 validator 제외 시 재계산
 
 ---
 
 ## 3. Bilateral Netting
 
-### 3.1 기능 개요
+### Overview
+Offset mutual obligations between two banks.
 
-두 은행 간 상호 채무를 상계하여 순 정산 금액만 처리하는 기능.
-
-### 3.2 상계 예시
-
+### Example
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                    BEFORE NETTING                            │
-├─────────────────────────────────────────────────────────────┤
-│                                                              │
-│   Bank A owes Bank B                                        │
-│   ─────────────────                                         │
-│   cred-A held by Bank B: 100,000                           │
-│                                                              │
-│   Bank B owes Bank A                                        │
-│   ─────────────────                                         │
-│   cred-B held by Bank A: 30,000                            │
-│                                                              │
-│   Gross Obligations: 130,000                                │
-│                                                              │
-└─────────────────────────────────────────────────────────────┘
-                              │
-                              ▼
-┌─────────────────────────────────────────────────────────────┐
-│                     AFTER NETTING                            │
-├─────────────────────────────────────────────────────────────┤
-│                                                              │
-│   Netted Amount: min(100,000, 30,000) = 30,000             │
-│                                                              │
-│   Burn:                                                      │
-│   - cred-A: 30,000 (from Bank B)                           │
-│   - cred-B: 30,000 (from Bank A)                           │
-│                                                              │
-│   Remaining Obligations:                                     │
-│   - Bank A → Bank B: 70,000                                 │
-│                                                              │
-│   Reduction: 130,000 → 70,000 (46% reduction)              │
-│                                                              │
-└─────────────────────────────────────────────────────────────┘
+BEFORE NETTING
+──────────────
+Bank A → Bank B: 100 (cred-A held by B)
+Bank B → Bank A:  30 (cred-B held by A)
+Gross: 130
+
+NETTING
+───────
+Net = min(100, 30) = 30
+Burn cred-A: 30, Burn cred-B: 30
+
+AFTER NETTING
+─────────────
+Net: Bank A → Bank B: 70
+Reduction: 130 → 70 (46%)
 ```
 
-### 3.3 관련 코드
-
-**x/netting/keeper - Netting 실행**
+### Code Reference
 ```go
-func (k Keeper) ExecuteBilateralNetting(ctx sdk.Context,
-    bankA, bankB string) (netAmount math.Int, netDebtor string, err error) {
+func ExecuteBilateralNetting(ctx, bankA, bankB string) (netAmount, netDebtor, error) {
+    aOwesB := GetCreditBalance(ctx, bankB, "cred-"+bankA)
+    bOwesA := GetCreditBalance(ctx, bankA, "cred-"+bankB)
 
-    // Get mutual balances
-    aOwesB := k.GetCreditBalance(ctx, bankB, "cred-"+bankA)
-    bOwesA := k.GetCreditBalance(ctx, bankA, "cred-"+bankB)
-
-    // Calculate net
     netAmount = math.MinInt(aOwesB, bOwesA)
 
-    if netAmount.IsZero() {
-        return math.ZeroInt(), "", types.ErrNettingNotRequired
-    }
+    BurnCredit(ctx, bankB, "cred-"+bankA, netAmount)
+    BurnCredit(ctx, bankA, "cred-"+bankB, netAmount)
 
-    // Burn netted amounts
-    k.BurnCredit(ctx, bankB, "cred-"+bankA, netAmount)
-    k.BurnCredit(ctx, bankA, "cred-"+bankB, netAmount)
-
-    // Determine net debtor
     if aOwesB.GT(bOwesA) {
         return aOwesB.Sub(bOwesA), bankA, nil
     }
@@ -224,70 +147,92 @@ func (k Keeper) ExecuteBilateralNetting(ctx sdk.Context,
 }
 ```
 
-### 3.4 Netting Cycle
+### Netting Cycle
 
-| Parameter | Value | Description |
-|-----------|-------|-------------|
-| Trigger | Block height | 매 N 블록마다 실행 |
-| Default interval | 720 blocks | 약 1시간 (5초 블록) |
-| Pairs | All active pairs | 잔액 있는 모든 쌍 |
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| Trigger | Block height | Every N blocks |
+| Interval | 720 blocks | ~1 hour (5s blocks) |
+| Pairs | All active | Pairs with balances |
 
 ---
 
-## 4. Credit Token (IOU) Management
+## 4. Credit Token (IOU)
 
-### 4.1 기능 개요
-
-은행 간 채무를 토큰화하여 관리하는 기능.
-
-### 4.2 토큰 구조
-
+### Token Model
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                    CREDIT TOKEN MODEL                        │
-├─────────────────────────────────────────────────────────────┤
-│                                                              │
-│   Token: cred-BANK_A                                        │
-│   ──────────────────                                        │
-│   Issuer: Bank A                                            │
-│   Meaning: "Bank A owes the holder"                         │
-│   Value: 1 cred = 1 Stablecoin Unit                        │
-│                                                              │
-│   Holders:                                                   │
-│   ├── Bank B: 100,000 (Bank A owes Bank B)                 │
-│   ├── Bank C: 50,000  (Bank A owes Bank C)                 │
-│   └── Bank D: 25,000  (Bank A owes Bank D)                 │
-│                                                              │
-│   Total Supply: 175,000                                     │
-│   (= Total debt of Bank A to other banks)                   │
-│                                                              │
-└─────────────────────────────────────────────────────────────┘
+Token: cred-BANK_A
+Issuer: Bank A
+Meaning: "Bank A owes the holder"
+Value: 1 cred = 1 Stablecoin Unit
+
+Holders:
+├── Bank B: 100,000
+├── Bank C:  50,000
+└── Bank D:  25,000
+
+Total Supply: 175,000 (Bank A's total debt)
 ```
 
-### 4.3 관련 코드
+### Properties
 
-**x/netting/keeper - Credit 발행**
+| Property | Description |
+|----------|-------------|
+| Issuer-specific | Separate token per bank |
+| Fungible | Same issuer tokens interchangeable |
+| Burnable | Destroyed during netting |
+| Non-transferable | Only netted, not traded |
+
+---
+
+## 5. Multi-Signature
+
+### Signature Aggregation
+```
+Message: MintCommand(0xabc, 0xdef, 1000, "besu-b")
+
+Step 1: Compute Hash
+  hash = keccak256(commandId || recipient || amount || chain)
+  ethHash = "\x19Ethereum Signed Message:\n32" + hash
+
+Step 2: Collect Signatures
+  Validator A: sig_a = sign(ethHash, privKey_a)
+  Validator B: sig_b = sign(ethHash, privKey_b)
+  Validator C: sig_c = sign(ethHash, privKey_c)
+
+Step 3: Aggregate
+  signatures = [sig_a, sig_b, sig_c]
+
+Step 4: Verify on Executor
+  for sig in signatures:
+      signer = ecrecover(ethHash, sig)
+      require(validators[signer] == true)
+```
+
+---
+
+## 6. Error Handling
+
+### Recovery Mechanisms
+
+| Error | Handler | Recovery |
+|-------|---------|----------|
+| Network timeout | Exponential backoff | Max 5 retries |
+| RPC failure | Circuit breaker | 60s open state |
+| Consensus timeout | Dynamic threshold | Exclude offline |
+| Netting failure | Snapshot | Rollback |
+| Signature mismatch | Validator sync | Version check |
+
+### Netting Rollback
 ```go
-func (k Keeper) IssueCredit(ctx sdk.Context,
-    issuerBank, holderBank string, amount math.Int) error {
+func ExecuteNettingWithRollback(ctx, pairs) error {
+    snapshot := CreateSnapshot(ctx, pairs)
 
-    denom := "cred-" + issuerBank
-
-    // Update holder balance
-    currentBalance := k.GetCreditBalance(ctx, holderBank, denom)
-    newBalance := currentBalance.Add(amount)
-    k.SetCreditBalance(ctx, holderBank, denom, newBalance)
-
-    // Emit event
-    ctx.EventManager().EmitEvent(
-        sdk.NewEvent(
-            types.EventTypeCreditIssued,
-            sdk.NewAttribute(types.AttributeKeyDenom, denom),
-            sdk.NewAttribute(types.AttributeKeyAmount, amount.String()),
-            sdk.NewAttribute(types.AttributeKeyIssuerBank, issuerBank),
-            sdk.NewAttribute(types.AttributeKeyHolderBank, holderBank),
-        ),
-    )
+    err := ExecuteNetting(ctx, pairs)
+    if err != nil {
+        RollbackNetting(ctx, snapshot)
+        return err
+    }
 
     return nil
 }
@@ -295,195 +240,292 @@ func (k Keeper) IssueCredit(ctx sdk.Context,
 
 ---
 
-## 5. Multi-Signature Management
+## 7. Gas Estimation
 
-### 5.1 기능 개요
-
-Validator 서명을 집계하여 threshold signature를 생성하는 기능.
-
-### 5.2 서명 흐름
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│                   SIGNATURE AGGREGATION                      │
-├─────────────────────────────────────────────────────────────┤
-│                                                              │
-│   Message: MintCommand(0xabc, 0xdef, 1000, "besu-b")       │
-│   ──────────────────────────────────────────────────────    │
-│                                                              │
-│   Step 1: Compute Message Hash                              │
-│   ────────────────────────────                              │
-│   hash = keccak256(commandId || recipient || amount || chain)│
-│   ethHash = "\x19Ethereum Signed Message:\n32" + hash       │
-│                                                              │
-│   Step 2: Collect Signatures                                │
-│   ──────────────────────────                                │
-│   Validator A: sig_a = sign(ethHash, privKey_a)            │
-│   Validator B: sig_b = sign(ethHash, privKey_b)            │
-│   Validator C: sig_c = sign(ethHash, privKey_c)            │
-│                                                              │
-│   Step 3: Aggregate                                         │
-│   ─────────────────                                         │
-│   signatures = [sig_a, sig_b, sig_c]                        │
-│                                                              │
-│   Step 4: Verify on Executor                                │
-│   ──────────────────────────                                │
-│   for each sig in signatures:                               │
-│       signer = ecrecover(ethHash, sig)                      │
-│       require(validators[signer] == true)                   │
-│                                                              │
-└─────────────────────────────────────────────────────────────┘
-```
-
-### 5.3 관련 코드
-
-**x/multisig/keeper - 서명 집계**
-```go
-func (k Keeper) AggregateSignatures(ctx sdk.Context,
-    commandId string) ([][]byte, error) {
-
-    signatures := [][]byte{}
-
-    for _, validator := range k.GetValidators(ctx) {
-        sig, found := k.GetSignature(ctx, commandId, validator)
-        if found {
-            signatures = append(signatures, sig)
-        }
-    }
-
-    threshold := k.GetThreshold(ctx)
-    if len(signatures) < int(threshold) {
-        return nil, types.ErrInsufficientSignatures
-    }
-
-    return signatures, nil
-}
-```
-
----
-
-## 6. Error Handling & Recovery
-
-### 6.1 기능 개요
-
-시스템 오류 발생 시 자동 복구 및 롤백 메커니즘.
-
-### 6.2 오류 유형별 처리
-
-| Error Type | Handler | Recovery |
-|------------|---------|----------|
-| Network timeout | Exponential backoff | 최대 5회 재시도 |
-| RPC failure | Circuit breaker | 60초 후 half-open |
-| Consensus timeout | Dynamic threshold | 오프라인 validator 제외 |
-| Netting failure | Snapshot rollback | 이전 상태 복원 |
-| Signature mismatch | Validator sync | 세트 버전 동기화 |
-
-### 6.3 Netting Rollback
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│                    NETTING ROLLBACK                          │
-├─────────────────────────────────────────────────────────────┤
-│                                                              │
-│   1. Create Snapshot                                        │
-│   ──────────────────                                        │
-│   snapshot = {                                              │
-│       cycleId: 42,                                          │
-│       balances: {                                           │
-│           "bankA": {"cred-bankB": 100, "cred-bankC": 50},  │
-│           "bankB": {"cred-bankA": 30, "cred-bankC": 20},   │
-│       }                                                      │
-│   }                                                          │
-│                                                              │
-│   2. Execute Netting                                        │
-│   ──────────────────                                        │
-│   ... processing ...                                        │
-│                                                              │
-│   3a. Success → Discard snapshot                            │
-│   3b. Error → Rollback                                      │
-│   ────────────────────                                      │
-│   for bank, denoms := range snapshot.balances {            │
-│       for denom, amount := range denoms {                  │
-│           SetCreditBalance(bank, denom, amount)            │
-│       }                                                      │
-│   }                                                          │
-│                                                              │
-└─────────────────────────────────────────────────────────────┘
-```
-
----
-
-## 7. Audit & Logging
-
-### 7.1 기능 개요
-
-모든 트랜잭션 및 상태 변경에 대한 감사 로그 기록.
-
-### 7.2 이벤트 유형
-
-**Oracle Events**
-| Event | Attributes |
-|-------|------------|
-| `vote_submitted` | validator, tx_hash, amount |
-| `transfer_confirmed` | tx_hash, recipient, amount |
-| `transfer_rejected` | tx_hash, reason |
-
-**Netting Events**
-| Event | Attributes |
-|-------|------------|
-| `credit_issued` | denom, amount, issuer, holder |
-| `credit_burned` | denom, amount, holder |
-| `netting_completed` | cycle_id, pair_count, net_amount |
-| `netting_rollback` | cycle_id, reason |
-
-### 7.3 Query API
-
-```bash
-# Vote status
-interbank-nettingd query oracle vote-status <tx-hash>
-
-# Credit balance
-interbank-nettingd query netting credit-balance <bank-id> <denom>
-
-# Netting history
-interbank-nettingd query netting cycle-history <cycle-id>
-```
-
----
-
-## 8. Gas Estimation
-
-### 8.1 기능 개요
-
-Smart contract 실행 전 가스 비용을 추정하고 버퍼를 추가하는 기능.
-
-### 8.2 추정 로직
-
+### Estimation Logic
 ```solidity
-function estimateMintGas(
-    bytes32 commandId,
-    address recipient,
-    uint256 amount,
-    bytes[] calldata signatures
-) external view returns (uint256) {
+function estimateMintGas(signatures) returns (uint256) {
     uint256 baseGas = 50000;           // State changes
-    uint256 sigGas = signatures.length * 5000;  // Per signature
-    uint256 mintGas = 30000;           // Token mint
+    uint256 sigGas = signatures.length * 5000;
+    uint256 mintGas = 30000;
 
     uint256 total = baseGas + sigGas + mintGas;
     return (total * 120) / 100;        // 20% buffer
 }
 ```
 
-### 8.3 비용 구성
+### Cost Breakdown
 
-| Operation | Gas Cost | Description |
-|-----------|----------|-------------|
-| Base | 50,000 | 상태 변경 기본 비용 |
-| Signature verify | 5,000 | ecrecover per signature |
-| Token mint | 30,000 | ERC20 mint operation |
-| Buffer | +20% | 안전 마진 |
+| Operation | Gas | Description |
+|-----------|-----|-------------|
+| Base | 50,000 | State change overhead |
+| Sig verify | 5,000 | Per signature ecrecover |
+| Token mint | 30,000 | ERC20 mint |
+| Buffer | +20% | Safety margin |
+
+</details>
+
+<details open>
+<summary><b>🇰🇷 한국어</b></summary>
+
+## 1. 크로스체인 전송
+
+### 개요
+Bank A 네트워크에서 Bank B 네트워크 수신자에게 토큰 전송.
+
+### 흐름
+```
+Source Chain                Cosmos Hub              Dest Chain
+─────────────────────────────────────────────────────────────
+     │                           │                       │
+     │ 1. initiateTransfer()     │                       │
+     ├───────────────────────────┤                       │
+     │    Burn + 이벤트 발생     │                       │
+     │                           │                       │
+     │ 2. Validator 투표         │                       │
+     │    ───────────────────────┤                       │
+     │                           │ 3. 2/3 합의           │
+     │                           │                       │
+     │                           │ 4. Mint 명령          │
+     │                           ├──────────────────────▶│
+     │                           │                       │
+     │                           │    5. 검증 + Mint     │
+```
+
+### 코드 참조
+
+**Gateway.sol**
+```solidity
+function initiateTransfer(
+    address recipient,
+    uint256 amount,
+    string calldata destChain
+) external {
+    token.burn(msg.sender, amount);
+    emit TransferInitiated(transferId, msg.sender, recipient, amount, destChain);
+}
+```
+
+**Executor.sol**
+```solidity
+function executeMint(
+    bytes32 commandId,
+    address recipient,
+    uint256 amount,
+    bytes[] calldata signatures
+) external nonReentrant {
+    require(signatures.length >= threshold);
+    // 서명 검증 후 토큰 발행
+}
+```
+
+### 보안
+
+| 위험 | 대응 |
+|------|------|
+| 이중 지불 | processedCommands 맵 |
+| 재전송 공격 | commandId에 timestamp 포함 |
+| 서명 위조 | 2/3 threshold + ecrecover |
 
 ---
 
-## Next: [WHITEPAPER.md](WHITEPAPER.md) - 설계 원칙 및 기술 명세
+## 2. Oracle 합의
+
+### 개요
+Validator 투표를 통한 외부 체인 이벤트 검증.
+
+### 투표 프로세스
+```
+전송 이벤트: 0xabc...
+
+Validator A: ✓ 투표 완료 (블록 100)
+Validator B: ✓ 투표 완료 (블록 101)
+Validator C: ✓ 투표 완료 (블록 101)
+Validator D: ○ 대기 중
+Validator E: ○ 대기 중
+
+현황: 3/5 (60%)
+임계값: 4/5 (67%)
+결과: 대기 중
+```
+
+### 임계값 계산
+```
+threshold = (validatorCount * 2 + 2) / 3
+
+3명: 3명 필요 (100%)
+5명: 4명 필요 (80%)
+7명: 5명 필요 (71%)
+```
+
+### 동적 임계값
+오프라인 Validator 제외:
+```go
+func GetDynamicThreshold(ctx) (threshold, activeCount) {
+    activeCount := countActiveValidators(ctx)
+    threshold = (activeCount * 2 + 2) / 3
+    return threshold, activeCount
+}
+```
+
+---
+
+## 3. 양방향 Netting
+
+### 개요
+두 은행 간 상호 채무 상계.
+
+### 예시
+```
+NETTING 전
+──────────
+Bank A → Bank B: 100 (cred-A를 B가 보유)
+Bank B → Bank A:  30 (cred-B를 A가 보유)
+총 채무: 130
+
+NETTING
+───────
+상계액 = min(100, 30) = 30
+cred-A 30 소각, cred-B 30 소각
+
+NETTING 후
+──────────
+순 채무: Bank A → Bank B: 70
+감소율: 130 → 70 (46%)
+```
+
+### 코드 참조
+```go
+func ExecuteBilateralNetting(ctx, bankA, bankB string) (netAmount, netDebtor, error) {
+    aOwesB := GetCreditBalance(ctx, bankB, "cred-"+bankA)
+    bOwesA := GetCreditBalance(ctx, bankA, "cred-"+bankB)
+
+    netAmount = math.MinInt(aOwesB, bOwesA)
+
+    BurnCredit(ctx, bankB, "cred-"+bankA, netAmount)
+    BurnCredit(ctx, bankA, "cred-"+bankB, netAmount)
+
+    if aOwesB.GT(bOwesA) {
+        return aOwesB.Sub(bOwesA), bankA, nil
+    }
+    return bOwesA.Sub(aOwesB), bankB, nil
+}
+```
+
+### Netting 사이클
+
+| 파라미터 | 기본값 | 설명 |
+|----------|--------|------|
+| 트리거 | 블록 높이 | 매 N 블록마다 |
+| 주기 | 720 블록 | 약 1시간 (5초 블록) |
+| 대상 | 모든 활성 쌍 | 잔액 있는 은행 쌍 |
+
+---
+
+## 4. 신용 토큰 (IOU)
+
+### 토큰 모델
+```
+토큰: cred-BANK_A
+발행자: Bank A
+의미: "Bank A가 보유자에게 갚아야 할 금액"
+가치: 1 cred = 1 스테이블코인 단위
+
+보유자:
+├── Bank B: 100,000
+├── Bank C:  50,000
+└── Bank D:  25,000
+
+총 발행량: 175,000 (Bank A의 총 채무)
+```
+
+### 속성
+
+| 속성 | 설명 |
+|------|------|
+| 발행자별 분리 | 은행별 독립 토큰 |
+| 대체 가능 | 동일 발행자 토큰 교환 가능 |
+| 소각 가능 | Netting 시 소각 |
+| 양도 불가 | 거래 불가, Netting만 가능 |
+
+---
+
+## 5. 다중 서명
+
+### 서명 집계
+```
+메시지: MintCommand(0xabc, 0xdef, 1000, "besu-b")
+
+1단계: 해시 계산
+  hash = keccak256(commandId || recipient || amount || chain)
+  ethHash = "\x19Ethereum Signed Message:\n32" + hash
+
+2단계: 서명 수집
+  Validator A: sig_a = sign(ethHash, privKey_a)
+  Validator B: sig_b = sign(ethHash, privKey_b)
+  Validator C: sig_c = sign(ethHash, privKey_c)
+
+3단계: 집계
+  signatures = [sig_a, sig_b, sig_c]
+
+4단계: Executor 검증
+  for sig in signatures:
+      signer = ecrecover(ethHash, sig)
+      require(validators[signer] == true)
+```
+
+---
+
+## 6. 오류 처리
+
+### 복구 메커니즘
+
+| 오류 | 핸들러 | 복구 방법 |
+|------|--------|----------|
+| 네트워크 타임아웃 | Exponential backoff | 최대 5회 재시도 |
+| RPC 실패 | Circuit breaker | 60초 open 상태 |
+| 합의 타임아웃 | Dynamic threshold | 오프라인 제외 |
+| Netting 실패 | 스냅샷 | 롤백 |
+| 서명 불일치 | Validator 동기화 | 버전 체크 |
+
+### Netting 롤백
+```go
+func ExecuteNettingWithRollback(ctx, pairs) error {
+    snapshot := CreateSnapshot(ctx, pairs)
+
+    err := ExecuteNetting(ctx, pairs)
+    if err != nil {
+        RollbackNetting(ctx, snapshot)
+        return err
+    }
+
+    return nil
+}
+```
+
+---
+
+## 7. 가스 추정
+
+### 추정 로직
+```solidity
+function estimateMintGas(signatures) returns (uint256) {
+    uint256 baseGas = 50000;           // 상태 변경
+    uint256 sigGas = signatures.length * 5000;
+    uint256 mintGas = 30000;
+
+    uint256 total = baseGas + sigGas + mintGas;
+    return (total * 120) / 100;        // 20% 버퍼
+}
+```
+
+### 비용 구성
+
+| 작업 | 가스 | 설명 |
+|------|------|------|
+| 기본 | 50,000 | 상태 변경 기본 비용 |
+| 서명 검증 | 5,000 | 서명당 ecrecover |
+| 토큰 발행 | 30,000 | ERC20 mint |
+| 버퍼 | +20% | 안전 마진 |
+
+</details>
