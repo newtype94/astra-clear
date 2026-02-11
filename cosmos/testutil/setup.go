@@ -71,7 +71,10 @@ func GenTransferEvent() gopter.Gen {
 		GenBankID(),
 		gen.UInt64(),
 		gen.Int64(),
-	).Map(func(values []interface{}) types.TransferEvent {
+	).SuchThat(func(values []interface{}) bool {
+		// Ensure SourceChain != DestChain
+		return values[5].(string) != values[6].(string)
+	}).Map(func(values []interface{}) types.TransferEvent {
 		return types.TransferEvent{
 			TxHash:      values[0].(string),
 			Sender:      values[1].(string),
@@ -94,7 +97,10 @@ func GenCreditToken() gopter.Gen {
 		GenValidAmount(),
 		gen.AlphaString().SuchThat(func(s string) bool { return len(s) > 0 }),
 		gen.Int64(),
-	).Map(func(values []interface{}) types.CreditToken {
+	).SuchThat(func(values []interface{}) bool {
+		// Ensure IssuerBank != HolderBank
+		return values[0].(string) != values[1].(string)
+	}).Map(func(values []interface{}) types.CreditToken {
 		issuerBank := values[0].(string)
 		return types.CreditToken{
 			Denom:      "cred-" + issuerBank,

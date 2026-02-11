@@ -343,7 +343,13 @@ func (k Keeper) ExecuteNetting(ctx sdk.Context, pairs []types.BankPair) error {
 			return fmt.Errorf("failed to burn credit from %s: %w", pair.BankB, err)
 		}
 
-		// Update net amounts
+		// Update net amounts (initialize to zero if not present)
+		if _, ok := cycle.NetAmounts[pair.BankA]; !ok {
+			cycle.NetAmounts[pair.BankA] = math.ZeroInt()
+		}
+		if _, ok := cycle.NetAmounts[pair.BankB]; !ok {
+			cycle.NetAmounts[pair.BankB] = math.ZeroInt()
+		}
 		cycle.NetAmounts[pair.BankA] = cycle.NetAmounts[pair.BankA].Add(minAmount)
 		cycle.NetAmounts[pair.BankB] = cycle.NetAmounts[pair.BankB].Add(minAmount)
 	}
@@ -484,15 +490,19 @@ func (k Keeper) getAllBanksWithCredits(ctx sdk.Context) []string {
 	iterator := storetypes.KVStorePrefixIterator(store, nettingtypes.CreditBalanceKeyPrefix)
 	defer iterator.Close()
 
+	prefixLen := len(nettingtypes.CreditBalanceKeyPrefix)
 	bankSet := make(map[string]bool)
 	for ; iterator.Valid(); iterator.Next() {
-		// Extract bank from key - format is prefix/bank/denom
-		keyStr := string(iterator.Key())
-		// Find bank between first and second separator
-		if firstIdx := lastIndexByte(keyStr[:len(keyStr)/2], '/'); firstIdx != -1 {
-			remaining := keyStr[firstIdx+1:]
-			if secondIdx := lastIndexByte(remaining, '/'); secondIdx != -1 {
-				bank := remaining[:secondIdx]
+		// Key format: prefix + bank + "/" + denom
+		key := iterator.Key()
+		if len(key) <= prefixLen {
+			continue
+		}
+		// Strip the prefix, then find the first '/' to extract bank name
+		withoutPrefix := string(key[prefixLen:])
+		if idx := indexByte(withoutPrefix, '/'); idx != -1 {
+			bank := withoutPrefix[:idx]
+			if bank != "" {
 				bankSet[bank] = true
 			}
 		}
@@ -504,6 +514,16 @@ func (k Keeper) getAllBanksWithCredits(ctx sdk.Context) []string {
 	}
 
 	return banks
+}
+
+// indexByte returns the index of the first instance of c in s, or -1 if c is not present in s.
+func indexByte(s string, c byte) int {
+	for i := 0; i < len(s); i++ {
+		if s[i] == c {
+			return i
+		}
+	}
+	return -1
 }
 
 func (k Keeper) getLastNettingBlock(ctx sdk.Context) int64 {

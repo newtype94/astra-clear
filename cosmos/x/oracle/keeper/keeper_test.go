@@ -2,6 +2,8 @@ package keeper_test
 
 import (
 	"context"
+	"crypto/ecdsa"
+	"crypto/sha256"
 	"testing"
 
 	"cosmossdk.io/log"
@@ -15,6 +17,7 @@ import (
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	paramtypes "github.com/cosmos/cosmos-sdk/x/params/types"
 	stakingtypes "github.com/cosmos/cosmos-sdk/x/staking/types"
+	ethcrypto "github.com/ethereum/go-ethereum/crypto"
 	"github.com/leanovate/gopter"
 	"github.com/leanovate/gopter/gen"
 	"github.com/leanovate/gopter/prop"
@@ -51,7 +54,7 @@ func TestProperty_ConsensusReached_OnlyWith2ThirdsMajority(t *testing.T) {
 			// Test case 1: Insufficient votes (less than 2/3)
 			insufficientVotes := int(threshold - 1)
 			if insufficientVotes > 0 {
-				submitVotes(ctx, oracleKeeper, transferEvent, validators[:insufficientVotes])
+				submitVotes(ctx, oracleKeeper, transferEvent, validators[:insufficientVotes], stakingKeeper)
 
 				// Check that consensus is NOT reached
 				consensus, err := oracleKeeper.CheckConsensus(ctx, transferEvent.TxHash)
@@ -67,7 +70,7 @@ func TestProperty_ConsensusReached_OnlyWith2ThirdsMajority(t *testing.T) {
 			}
 
 			// Test case 2: Sufficient votes (exactly 2/3 or more)
-			submitVotes(ctx, oracleKeeper, transferEvent, validators[:int(threshold)])
+			submitVotes(ctx, oracleKeeper, transferEvent, validators[:int(threshold)], stakingKeeper)
 
 			// Check that consensus IS reached
 			consensus, err := oracleKeeper.CheckConsensus(ctx, transferEvent.TxHash)
@@ -163,12 +166,18 @@ func TestProperty_DuplicateVotes_AreRejected(t *testing.T) {
 				return true // Skip empty validator set
 			}
 
-			// Create valid vote
+			// Create proper ECDSA signature
+			sig := stakingKeeper.SignData(validators[0].Address, []byte(transferEvent.TxHash))
+			if sig == nil {
+				return false // Should be able to sign
+			}
+
+			// Create valid vote with proper signature
 			validVote := types.Vote{
 				TxHash:    transferEvent.TxHash,
 				Validator: validators[0].Address,
 				EventData: transferEvent,
-				Signature: []byte("valid_signature"), // Mock valid signature
+				Signature: sig,
 				VoteTime:  ctx.BlockTime().Unix(),
 			}
 
@@ -264,13 +273,16 @@ func setupValidators(ctx sdk.Context, stakingKeeper *MockStakingKeeper, validato
 	}
 }
 
-func submitVotes(ctx sdk.Context, oracleKeeper *keeper.Keeper, transferEvent types.TransferEvent, validators []types.Validator) {
+func submitVotes(ctx sdk.Context, oracleKeeper *keeper.Keeper, transferEvent types.TransferEvent, validators []types.Validator, stakingKeeper *MockStakingKeeper) {
 	for _, validator := range validators {
+		// Create proper ECDSA signature using the validator's private key
+		sig := stakingKeeper.SignData(validator.Address, []byte(transferEvent.TxHash))
+
 		vote := types.Vote{
 			TxHash:    transferEvent.TxHash,
 			Validator: validator.Address,
 			EventData: transferEvent,
-			Signature: []byte("mock_signature"), // Mock signature for testing
+			Signature: sig,
 			VoteTime:  ctx.BlockTime().Unix(),
 		}
 
@@ -283,22 +295,28 @@ func submitVotes(ctx sdk.Context, oracleKeeper *keeper.Keeper, transferEvent typ
 type MockStakingKeeper struct {
 	validators       map[string]types.Validator
 	stakingValidator map[string]stakingtypes.Validator
+	ethPrivKeys      map[string]*ecdsa.PrivateKey // Store eth private keys for signing
 }
 
 func NewMockStakingKeeper() *MockStakingKeeper {
 	return &MockStakingKeeper{
 		validators:       make(map[string]types.Validator),
 		stakingValidator: make(map[string]stakingtypes.Validator),
+		ethPrivKeys:      make(map[string]*ecdsa.PrivateKey),
 	}
 }
 
 func (m *MockStakingKeeper) SetValidator(validator types.Validator) {
 	m.validators[validator.Address] = validator
 
-	// Create a mock staking validator with a proper consensus pubkey
-	privKey := secp256k1.GenPrivKey()
-	pubKey := privKey.PubKey()
-	pkAny, _ := codectypes.NewAnyWithValue(pubKey)
+	// Generate an eth-compatible secp256k1 key pair
+	ethPrivKey, _ := ethcrypto.GenerateKey()
+	m.ethPrivKeys[validator.Address] = ethPrivKey
+
+	// Create Cosmos secp256k1 public key from the compressed eth public key
+	compressedPubKey := ethcrypto.CompressPubkey(&ethPrivKey.PublicKey)
+	cosmosPubKey := &secp256k1.PubKey{Key: compressedPubKey}
+	pkAny, _ := codectypes.NewAnyWithValue(cosmosPubKey)
 
 	stakingVal := stakingtypes.Validator{
 		OperatorAddress:   validator.Address,
@@ -309,6 +327,21 @@ func (m *MockStakingKeeper) SetValidator(validator types.Validator) {
 		MinSelfDelegation: math.NewInt(1),
 	}
 	m.stakingValidator[validator.Address] = stakingVal
+}
+
+// SignData signs data with the validator's private key (for testing)
+func (m *MockStakingKeeper) SignData(validatorAddr string, data []byte) []byte {
+	privKey, ok := m.ethPrivKeys[validatorAddr]
+	if !ok {
+		return nil
+	}
+	// Use SHA256 to match VerifySignature's hash function
+	hash := sha256.Sum256(data)
+	sig, err := ethcrypto.Sign(hash[:], privKey)
+	if err != nil {
+		return nil
+	}
+	return sig // 65 bytes: [R || S || V]
 }
 
 func (m *MockStakingKeeper) GetValidator(ctx context.Context, addr sdk.ValAddress) (stakingtypes.Validator, error) {
@@ -325,6 +358,10 @@ func (m *MockStakingKeeper) GetBondedValidatorsByPower(ctx context.Context) ([]s
 		validators = append(validators, v)
 	}
 	return validators, nil
+}
+
+func (m *MockStakingKeeper) GetAllValidators(ctx context.Context) ([]stakingtypes.Validator, error) {
+	return m.GetBondedValidatorsByPower(ctx)
 }
 
 // Silence unused imports

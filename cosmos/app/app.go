@@ -10,9 +10,11 @@ import (
 	"github.com/cosmos/cosmos-sdk/baseapp"
 	"github.com/cosmos/cosmos-sdk/client"
 	"github.com/cosmos/cosmos-sdk/codec"
-	"github.com/cosmos/cosmos-sdk/codec/types"
-	"github.com/cosmos/cosmos-sdk/server/types"
-	sdk "github.com/cosmos/cosmos-sdk/types"
+	codectypes "github.com/cosmos/cosmos-sdk/codec/types"
+	"github.com/cosmos/cosmos-sdk/server/api"
+	"github.com/cosmos/cosmos-sdk/server/config"
+	servertypes "github.com/cosmos/cosmos-sdk/server/types"
+	"github.com/cosmos/gogoproto/grpc"
 	"github.com/cosmos/cosmos-sdk/types/module"
 	"github.com/cosmos/cosmos-sdk/version"
 	"github.com/cosmos/cosmos-sdk/x/auth"
@@ -29,8 +31,8 @@ import (
 	stakingtypes "github.com/cosmos/cosmos-sdk/x/staking/types"
 	paramtypes "github.com/cosmos/cosmos-sdk/x/params/types"
 
-	"github.com/cometbft/cometbft/libs/log"
-	dbm "github.com/cometbft/cometbft-db"
+	"cosmossdk.io/log"
+	dbm "github.com/cosmos/cosmos-db"
 
 	"github.com/interbank-netting/cosmos/x/oracle"
 	oraclekeeper "github.com/interbank-netting/cosmos/x/oracle/keeper"
@@ -84,7 +86,7 @@ type App struct {
 
 	cdc               *codec.LegacyAmino
 	appCodec          codec.Codec
-	interfaceRegistry types.InterfaceRegistry
+	interfaceRegistry codectypes.InterfaceRegistry
 	txConfig          client.TxConfig
 
 	invCheckPeriod uint
@@ -120,10 +122,10 @@ func New(
 	db dbm.DB,
 	traceStore io.Writer,
 	loadLatest bool,
-	appOpts types.AppOptions,
+	appOpts servertypes.AppOptions,
 	baseAppOptions ...func(*baseapp.BaseApp),
 ) *App {
-	interfaceRegistry := types.NewInterfaceRegistry()
+	interfaceRegistry := codectypes.NewInterfaceRegistry()
 	appCodec := codec.NewProtoCodec(interfaceRegistry)
 	legacyAmino := codec.NewLegacyAmino()
 	txConfig := authtx.NewTxConfig(appCodec, authtx.DefaultSignModes)
@@ -211,7 +213,7 @@ func (app *App) AppCodec() codec.Codec {
 }
 
 // InterfaceRegistry returns an InterfaceRegistry
-func (app *App) InterfaceRegistry() types.InterfaceRegistry {
+func (app *App) InterfaceRegistry() codectypes.InterfaceRegistry {
 	return app.interfaceRegistry
 }
 
@@ -238,4 +240,34 @@ func (app *App) GetTKey(storeKey string) *storetypes.TransientStoreKey {
 // GetMemKey returns the MemStoreKey for the provided mem key.
 func (app *App) GetMemKey(storeKey string) *storetypes.MemoryStoreKey {
 	return app.memKeys[storeKey]
+}
+
+// RegisterAPIRoutes registers all application module routes with the provided API server.
+func (app *App) RegisterAPIRoutes(apiSvr *api.Server, apiConfig config.APIConfig) {
+	// Module API routes will be registered here
+}
+
+// RegisterGRPCServer registers gRPC services directly with the gRPC server.
+func (app *App) RegisterGRPCServer(server grpc.Server) {
+	// Module gRPC services will be registered here
+}
+
+// RegisterTxService registers the gRPC Query service for tx.
+func (app *App) RegisterTxService(clientCtx client.Context) {
+	// Tx service will be registered here
+}
+
+// RegisterTendermintService registers the gRPC Query service for CometBFT queries.
+func (app *App) RegisterTendermintService(clientCtx client.Context) {
+	// CometBFT service will be registered here
+}
+
+// RegisterNodeService registers the node gRPC Query service.
+func (app *App) RegisterNodeService(clientCtx client.Context, cfg config.Config) {
+	// Node service will be registered here
+}
+
+// Close is called to gracefully cleanup resources.
+func (app *App) Close() error {
+	return nil
 }

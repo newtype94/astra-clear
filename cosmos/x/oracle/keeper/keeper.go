@@ -7,7 +7,6 @@ import (
 	"cosmossdk.io/log"
 	storetypes "cosmossdk.io/store/types"
 	"github.com/cosmos/cosmos-sdk/codec"
-	"github.com/cosmos/cosmos-sdk/crypto/keys/secp256k1"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	paramtypes "github.com/cosmos/cosmos-sdk/x/params/types"
 	"github.com/ethereum/go-ethereum/crypto"
@@ -324,11 +323,10 @@ func (k Keeper) VerifySignature(ctx sdk.Context, validator string, data []byte, 
 	
 	// Try to parse as Cosmos secp256k1 public key first
 	if len(pubKey) == 33 { // Compressed secp256k1 public key
-		cosmosKey := &secp256k1.PubKey{Key: pubKey}
-		// Convert to uncompressed format for comparison
-		ecdsaPubKey, err := crypto.UnmarshalPubkey(cosmosKey.Bytes())
+		// Decompress the compressed public key to uncompressed format
+		ecdsaPubKey, err := crypto.DecompressPubkey(pubKey)
 		if err != nil {
-			k.Logger(ctx).Error("failed to unmarshal cosmos public key", "validator", validator, "error", err)
+			k.Logger(ctx).Error("failed to decompress cosmos public key", "validator", validator, "error", err)
 			return false
 		}
 		expectedPubKeyBytes = crypto.FromECDSAPub(ecdsaPubKey)

@@ -62,18 +62,18 @@ type MultisigKeeper interface {
 
 // BankKeeper defines the expected interface for the bank module
 type BankKeeper interface {
-	SendCoins(ctx sdk.Context, fromAddr, toAddr sdk.AccAddress, amt sdk.Coins) error
-	MintCoins(ctx sdk.Context, moduleName string, amt sdk.Coins) error
-	BurnCoins(ctx sdk.Context, moduleName string, amt sdk.Coins) error
-	GetBalance(ctx sdk.Context, addr sdk.AccAddress, denom string) sdk.Coin
-	GetAllBalances(ctx sdk.Context, addr sdk.AccAddress) sdk.Coins
+	SendCoins(ctx context.Context, fromAddr, toAddr sdk.AccAddress, amt sdk.Coins) error
+	MintCoins(ctx context.Context, moduleName string, amt sdk.Coins) error
+	BurnCoins(ctx context.Context, moduleName string, amt sdk.Coins) error
+	GetBalance(ctx context.Context, addr sdk.AccAddress, denom string) sdk.Coin
+	GetAllBalances(ctx context.Context, addr sdk.AccAddress) sdk.Coins
 }
 
 // AccountKeeper defines the expected interface for the account module
 type AccountKeeper interface {
-	GetAccount(ctx sdk.Context, addr sdk.AccAddress) sdk.AccountI
-	SetAccount(ctx sdk.Context, acc sdk.AccountI)
-	NewAccountWithAddress(ctx sdk.Context, addr sdk.AccAddress) sdk.AccountI
+	GetAccount(ctx context.Context, addr sdk.AccAddress) sdk.AccountI
+	SetAccount(ctx context.Context, acc sdk.AccountI)
+	NewAccountWithAddress(ctx context.Context, addr sdk.AccAddress) sdk.AccountI
 }
 
 // StakingKeeper defines the expected interface for the staking module

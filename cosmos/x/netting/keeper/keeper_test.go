@@ -1,6 +1,7 @@
 package keeper_test
 
 import (
+	"context"
 	"fmt"
 	"testing"
 
@@ -101,10 +102,16 @@ func TestProperty_CreditTokenTransfer_PreservesTotal(t *testing.T) {
 			// Record initial total supply
 			initialBalance := nettingKeeper.GetCreditBalance(ctx, creditToken.HolderBank, creditToken.Denom)
 
-			// Create a third bank for transfer
-			thirdBank := "bank-c"
-			if thirdBank == creditToken.HolderBank || thirdBank == creditToken.IssuerBank {
-				thirdBank = "bank-d" // Use different bank
+			// Create a third bank for transfer that differs from both holder and issuer
+			thirdBank := ""
+			for _, candidate := range []string{"bank-e", "bank-f", "bank-g"} {
+				if candidate != creditToken.HolderBank && candidate != creditToken.IssuerBank {
+					thirdBank = candidate
+					break
+				}
+			}
+			if thirdBank == "" {
+				return true // Skip if no suitable third bank (shouldn't happen)
 			}
 
 			// Transfer part of credit token to third bank
@@ -499,23 +506,23 @@ func NewMockBankKeeper() *MockBankKeeper {
 	}
 }
 
-func (m *MockBankKeeper) SendCoins(ctx sdk.Context, fromAddr, toAddr sdk.AccAddress, amt sdk.Coins) error {
+func (m *MockBankKeeper) SendCoins(ctx context.Context, fromAddr, toAddr sdk.AccAddress, amt sdk.Coins) error {
 	return nil
 }
 
-func (m *MockBankKeeper) MintCoins(ctx sdk.Context, moduleName string, amt sdk.Coins) error {
+func (m *MockBankKeeper) MintCoins(ctx context.Context, moduleName string, amt sdk.Coins) error {
 	return nil
 }
 
-func (m *MockBankKeeper) BurnCoins(ctx sdk.Context, moduleName string, amt sdk.Coins) error {
+func (m *MockBankKeeper) BurnCoins(ctx context.Context, moduleName string, amt sdk.Coins) error {
 	return nil
 }
 
-func (m *MockBankKeeper) GetBalance(ctx sdk.Context, addr sdk.AccAddress, denom string) sdk.Coin {
+func (m *MockBankKeeper) GetBalance(ctx context.Context, addr sdk.AccAddress, denom string) sdk.Coin {
 	return sdk.NewCoin(denom, math.ZeroInt())
 }
 
-func (m *MockBankKeeper) GetAllBalances(ctx sdk.Context, addr sdk.AccAddress) sdk.Coins {
+func (m *MockBankKeeper) GetAllBalances(ctx context.Context, addr sdk.AccAddress) sdk.Coins {
 	return sdk.Coins{}
 }
 
@@ -530,14 +537,14 @@ func NewMockAccountKeeper() *MockAccountKeeper {
 	}
 }
 
-func (m *MockAccountKeeper) GetAccount(ctx sdk.Context, addr sdk.AccAddress) sdk.AccountI {
+func (m *MockAccountKeeper) GetAccount(ctx context.Context, addr sdk.AccAddress) sdk.AccountI {
 	return nil
 }
 
-func (m *MockAccountKeeper) SetAccount(ctx sdk.Context, acc sdk.AccountI) {
+func (m *MockAccountKeeper) SetAccount(ctx context.Context, acc sdk.AccountI) {
 }
 
-func (m *MockAccountKeeper) NewAccountWithAddress(ctx sdk.Context, addr sdk.AccAddress) sdk.AccountI {
+func (m *MockAccountKeeper) NewAccountWithAddress(ctx context.Context, addr sdk.AccAddress) sdk.AccountI {
 	return nil
 }
 
